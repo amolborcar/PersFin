@@ -1,5 +1,5 @@
 import { getDb } from '../db/schema.js';
-import { fetchHoldings } from './simplefin.js';
+import { fetchHoldings } from './plaid.js';
 import { effectiveChain, fetchDailyCloses, closeAsOf } from './prices.js';
 import { fetchSecurityMeta } from './yahooMeta.js';
 import { fetchDeepConstituents, type Constituent } from './fundHoldings.js';

@@ -15,7 +15,7 @@ router.post('/import', async (req: Request, res: Response) => {
   if (!csv) return res.status(400).json({ error: 'CSV body required' });
   try {
     const result = importTransactions(csv);
-    const { removed } = await reconcileImported(); // auto-remove SimpleFIN duplicates
+    const { removed } = await reconcileImported(); // auto-remove bank-feed duplicates
     res.json({ ...result, reconciled: removed });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'import failed' });

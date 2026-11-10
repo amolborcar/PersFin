@@ -266,7 +266,7 @@ function ThemeRow() {
 
 // ---- Sync --------------------------------------------------------------------
 // "Sync now" forces a fresh pull of everything external — linked accounts
-// (SimpleFIN + Plaid) and real-estate values (Zillow) — then records a net-worth
+// (Plaid) and real-estate values (Zillow) — then records a net-worth
 // point. The daily midnight history point runs automatically, so no toggle.
 function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null; refetch: () => void; onChanged: () => void }) {
   const [syncing, setSyncing] = useState(false);

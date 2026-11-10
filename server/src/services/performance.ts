@@ -1,5 +1,6 @@
 import { getDb } from '../db/schema.js';
-import { fetchHoldings, type Holding } from './simplefin.js';
+import { fetchHoldings } from './plaid.js';
+import type { Holding } from './holdings.js';
 import { fetchDailyCloses, effectiveChain, accountProxyTickers, closeAsOf, type PricePoint } from './prices.js';
 
 export interface PerfPoint { date: string; value: number }

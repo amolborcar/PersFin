@@ -90,7 +90,7 @@ describe('isInternalTransfer (cash-flow spending exclusion)', () => {
   });
 });
 
-describe('isDuplicateTxn (import vs SimpleFIN dedup)', () => {
+describe('isDuplicateTxn (import vs bank-feed dedup)', () => {
   const DAY = 86400_000;
   const mk = (over: Partial<DupTxn>): DupTxn => ({ amount: -100, day: Date.parse('2026-06-15T00:00:00Z'), merchant: 'acme', acct: '1234', ...over });
 

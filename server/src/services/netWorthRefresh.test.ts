@@ -10,10 +10,8 @@ let dir: string;
 let closeDb: () => void;
 let db: Database.Database;
 
-const simplefin = vi.fn<() => Promise<void>>();
 const plaid = vi.fn<() => Promise<void>>();
 const zillow = vi.fn<() => Promise<void>>();
-vi.mock('./simplefin.js', () => ({ refreshAllAccounts: () => simplefin() }));
 vi.mock('./plaid.js', () => ({ refreshAllPlaid: () => plaid() }));
 vi.mock('./zillow.js', () => ({ refreshAllProperties: () => zillow() }));
 
@@ -21,7 +19,6 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'kevfin-refresh-'));
   process.env.DB_PATH = join(dir, 'test.db');
   vi.resetModules();
-  simplefin.mockResolvedValue(undefined);
   plaid.mockResolvedValue(undefined);
   zillow.mockResolvedValue(undefined);
   const schema = await import('../db/schema.js');
@@ -59,10 +56,10 @@ describe('describeRefreshFailures', () => {
     const { describeRefreshFailures } = await import('./netWorth.js');
     const { ProviderRefreshError } = await import('./refreshErrors.js');
     const m = new Map<string, unknown>([
-      ['SimpleFIN', new ProviderRefreshError('SimpleFIN', 1, [{ label: 'Schwab', reason: 'HTTP 403' }])],
-      ['Plaid', 'not a provider error'],
+      ['Plaid', new ProviderRefreshError('Plaid', 1, [{ label: 'Schwab', reason: 'HTTP 403' }])],
+      ['real estate', 'not a provider error'],
     ]);
-    expect(describeRefreshFailures(m)).toBe("Couldn't refresh Schwab (SimpleFIN: HTTP 403), Plaid — everything else synced.");
+    expect(describeRefreshFailures(m)).toBe("Couldn't refresh Schwab (Plaid: HTTP 403), real estate — everything else synced.");
   });
 
   it('caps the list at three and counts the rest', async () => {

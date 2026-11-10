@@ -12,7 +12,7 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | Phase | Status |
 |---|---|
 | 0 Baseline | Done. Build passes; tests pass (server 383, client 153). |
-| 1 SimpleFIN → Plaid | In progress |
+| 1 SimpleFIN → Plaid | Done. Build passes; tests pass (server 388, client 153). |
 | 2–9 | Not started |
 
 Update this table at the end of each phase.
@@ -41,8 +41,14 @@ Update this table at the end of each phase.
   send balances or account numbers.
 - **Plaid investments.** Plaid gives no lot open date, so the cost-basis
   estimate (shares × price on the open date) cannot run for Plaid accounts. Some
-  employer plans report no cost basis. Plaid gives 24 months of investment
-  transactions; the old SimpleFIN backfill gave about 5 years.
+  employer plans report no cost basis.
+- **History depth.** The brokerage backfill uses today's holdings × historical
+  prices, so it still covers about 5 years. Cash and credit history is rebuilt
+  from Plaid transactions, which cover up to 2 years.
+- **Upgrade of an existing database.** Migration 7 deletes all SimpleFIN data
+  (connections, accounts, their transactions and balance history, caches).
+  Take a backup (Setup → Download backup) before the first start of the new
+  version if the database has SimpleFIN accounts.
 - **Plaid access.** The Investments product must be enabled for the Plaid
   production account. Accounts linked without investment consent must be linked
   again (Plaid update mode).
@@ -64,9 +70,9 @@ Update this table at the end of each phase.
      `quantity` → `shares`, and set `acquired` to `null`.
    - Map cash positions (`security.type === 'cash'`) to the cash symbol the code
      uses now.
-3. In `services/plaid.ts`, add `fetchTransactions()` for the balance backfill:
-   - Cash and credit accounts: read the `transactions` table.
-   - Brokerage accounts: call `investmentsTransactionsGet`.
+3. Keep the existing `fetchPlaidTransactions()` for the cash and credit
+   backfill. `investmentsTransactionsGet` is not necessary: the brokerage
+   backfill uses holdings × historical prices.
 4. Point `allocation.ts`, `performance.ts`, and `backfill.ts` at the Plaid
    functions.
 5. Delete `routes/simplefin.ts`, `services/simplefin.ts`, and
@@ -80,10 +86,14 @@ Update this table at the end of each phase.
    `recurring.ts`, `data.ts`, `db/providerCache.ts`, `util/categorize.ts`,
    `Setup.tsx`, `Welcome.tsx`, `Dashboard.tsx`, `ConnectPlaid.tsx`,
    `lib/merchantLogo.ts`.
-9. Change the SimpleFIN test fixtures to the Plaid shape. Do not delete test
-   cases. Affected: `budget.test.ts`, `budgetFixes.test.ts`,
+9. Change the SimpleFIN test fixtures to the Plaid shape with the shared
+   helper `server/src/db/plaidSeed.ts` (also used by `scripts/seed-demo.ts`).
+   Do not delete test cases. Affected: `budget.test.ts`, `budgetFixes.test.ts`,
    `budgetGolden.test.ts`, `feedStore.test.ts`, `netWorthRefresh.test.ts`,
-   `refreshErrors.test.ts`, `rulesReview.test.ts`.
+   `refreshErrors.test.ts`, `rulesReview.test.ts`. The golden budget snapshots
+   must stay unchanged.
+   Move the account rename/category/hide endpoint from `/api/simplefin/accounts`
+   to `/api/accounts` (`routes/accounts.ts`).
 10. Add tests for the Plaid → `Holding` mapping: null cost basis, cash
     positions, missing ticker.
 11. Verify: build and tests pass. Plaid link, sync, and the Investments page

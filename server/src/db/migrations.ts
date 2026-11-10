@@ -2,10 +2,7 @@ import type Database from 'better-sqlite3';
 import {
   CATEGORIES, TAXONOMY_MIGRATION, GROUP_MERGES, ensureImportedCategories,
 } from '../services/taxonomy.js';
-import {
-  rawTxnsFromSimpleFin, syncFeedTransactions, FEED_WINDOW_DAYS,
-  type RawTxn, type SimpleFinFeedAccount,
-} from '../services/feedStore.js';
+import { syncFeedTransactions, FEED_WINDOW_DAYS, type RawTxn } from '../services/feedStore.js';
 
 // Numbered schema migrations, driven by PRAGMA user_version. Each runs at most
 // once per database, inside a transaction, in order. This replaces the three
@@ -320,7 +317,9 @@ function migrateGroupMerges(db: Db) {
 // The durable transaction store (see services/feedStore.ts). Backfills from
 // whatever provider payloads are already cached, so an upgraded database has
 // its full cached history in the table immediately — from then on the daily
-// sync keeps it current and rows never age out.
+// sync keeps it current and rows never age out. Cached SimpleFIN payloads
+// (sf_cache_*) are no longer read here: SimpleFIN support was removed, and
+// migration 7 deletes all SimpleFIN data, so backfilling it would be undone.
 function feedTransactionsTable(db: Db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
@@ -344,9 +343,7 @@ function feedTransactionsTable(db: Db) {
   const cached = db.prepare(`SELECT key, payload FROM provider_cache`).all() as { key: string; payload: string }[];
   for (const row of cached) {
     try {
-      if (row.key.startsWith('sf_cache_')) {
-        syncFeedTransactions(db, 'simplefin', rawTxnsFromSimpleFin(JSON.parse(row.payload) as SimpleFinFeedAccount[]), since);
-      } else if (row.key.startsWith('plaid_txn_cache_')) {
+      if (row.key.startsWith('plaid_txn_cache_')) {
         syncFeedTransactions(db, 'plaid', JSON.parse(row.payload) as RawTxn[], since);
       }
     } catch { /* unreadable payload — the next provider fetch repopulates */ }
@@ -424,6 +421,26 @@ function reportCacheTable(db: Db) {
   `);
 }
 
+// SimpleFIN support was removed; Plaid is the only bank provider. Delete every
+// SimpleFIN record: the connections (their access URLs embed credentials), the
+// accounts they created, those accounts' transactions and balance history, and
+// the cached payloads. An account counts as SimpleFIN when its source is
+// 'simplefin' and it has no Plaid item (very old hybrid databases defaulted
+// `source` to 'simplefin' for every row). Manual and Plaid data are untouched.
+function removeSimpleFin(db: Db) {
+  const hasTable = (name: string) =>
+    Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name));
+  const sfAccounts = `SELECT id FROM accounts WHERE source = 'simplefin' AND (plaid_item_id IS NULL OR plaid_item_id = '')`;
+  db.exec(`
+    DELETE FROM transactions WHERE source = 'simplefin' OR account_id IN (${sfAccounts});
+    DELETE FROM balance_observations WHERE account_id IN (${sfAccounts});
+    DELETE FROM accounts WHERE id IN (${sfAccounts});
+    DELETE FROM provider_cache WHERE key LIKE 'sf_cache_%';
+    DELETE FROM meta WHERE key LIKE 'sf_cache_%';
+  `);
+  if (hasTable('simplefin_connections')) db.exec(`DROP TABLE simplefin_connections`);
+}
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'baseline', up: baseline },
   { version: 2, name: 'feed-transactions-table', up: feedTransactionsTable },
@@ -431,6 +448,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 4, name: 'balance-observations-table', up: balanceObservationsTable },
   { version: 5, name: 'imported-cat-edited', up: importedCatEdited },
   { version: 6, name: 'report-cache-table', up: reportCacheTable },
+  { version: 7, name: 'remove-simplefin', up: removeSimpleFin },
 ];
 
 // Apply every migration newer than the database's user_version, each in its own

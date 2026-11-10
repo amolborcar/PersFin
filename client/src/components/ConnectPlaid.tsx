@@ -6,7 +6,7 @@ interface Props {
 }
 
 // The "+ Plaid" button. When Plaid credentials aren't set yet it opens an inline
-// key-setup form (mirroring the SimpleFIN flow) instead of staying hidden; once
+// key-setup form instead of staying hidden; once
 // the keys validate, it launches Plaid Link to connect an institution.
 export default function ConnectPlaid({ onSuccess }: Props) {
   const [statusLoaded, setStatusLoaded] = useState(false);

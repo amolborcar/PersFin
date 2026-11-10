@@ -65,13 +65,6 @@ export interface Breakdown {
   properties: Property[];
 }
 
-export interface Connection {
-  id: number;
-  account_count: number;
-  institutions: string;
-  created_at: string;
-}
-
 export interface PlaidItem {
   item_id: string;
   institution_name: string;

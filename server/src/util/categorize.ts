@@ -2,8 +2,8 @@ export type Category = 'banking' | 'brokerage' | 'credit' | 'other';
 
 export const CATEGORIES: Category[] = ['banking', 'brokerage', 'credit', 'other'];
 
-// Best-effort categorization from an account name. SimpleFIN doesn't always
-// expose a reliable type, so this is heuristic — users can override per account.
+// Best-effort categorization from an account name, for accounts whose type the
+// provider leaves ambiguous (and manual accounts) — users can override per account.
 export function categorize(name: string): Category {
   const n = name.toLowerCase();
   if (/(visa|mastercard|amex|american express|credit card|sapphire|freedom|venture|signature|\bcard\b)/.test(n))

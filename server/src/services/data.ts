@@ -4,7 +4,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { getDb, closeDb, DB_PATH } from '../db/schema.js';
-import { clearSimpleFinCaches } from './simplefin.js';
 import { clearPlaidCaches } from './plaid.js';
 
 // Operational data-lifecycle actions for the Setup hub: full-database backup,
@@ -24,7 +23,7 @@ const REQUIRED_TABLES = ['accounts', 'net_worth_snapshots', 'meta'];
 const DATA_TABLES = [
   'net_worth_snapshots', 'balance_observations', 'property_value_history', 'properties',
   'manual_assets', 'accounts', 'asset_class_overrides', 'cost_basis_overrides', 'imported_cost_basis',
-  'simplefin_connections', 'plaid_items', 'provider_cache', 'transactions',
+  'plaid_items', 'provider_cache', 'transactions',
   'imported_txns', 'budget_targets', 'rules', 'txn_amount_overrides',
   'recurring_overrides', 'report_cache',
 ];
@@ -120,7 +119,6 @@ export async function restoreFromBuffer(buf: Buffer): Promise<Record<string, num
 
   // The in-memory provider caches belong to the old DB; without this they'd keep
   // serving its transactions/holdings until the next restart.
-  clearSimpleFinCaches();
   clearPlaidCaches();
 
   return countRows();
@@ -147,13 +145,12 @@ export function resetData(mode: ResetMode): Record<string, number> {
     const wipe = db.transaction(() => {
       for (const t of DATA_TABLES) if (present.has(t)) db.prepare(`DELETE FROM ${t}`).run();
       // Cached provider payloads hold full transaction/balance history — leaving
-      // them behind would keep financial data in a "fully erased" DB. SimpleFIN
-      // and Plaid now live in provider_cache (wiped above); the ZHVI series and
-      // any pre-migration leftovers are still keyed in `meta`.
-      db.prepare(`DELETE FROM meta WHERE key LIKE 'sf_cache_%' OR key LIKE 'plaid_txn_cache_%' OR key LIKE 'zhvi_%'`).run();
+      // them behind would keep financial data in a "fully erased" DB. Plaid
+      // payloads live in provider_cache (wiped above); the ZHVI series and any
+      // pre-migration leftovers are still keyed in `meta`.
+      db.prepare(`DELETE FROM meta WHERE key LIKE 'plaid_txn_cache_%' OR key LIKE 'zhvi_%'`).run();
     });
     wipe();
-    clearSimpleFinCaches();
     clearPlaidCaches();
   }
   return countRows();
@@ -176,8 +173,8 @@ function countRows(): Record<string, number> {
     manualAssets: tableCount('manual_assets'),
     snapshots: tableCount('net_worth_snapshots'),
     importedTxns: tableCount('imported_txns'),
-    feedTxns: tableCount('transactions'), // durable bank-feed transactions (SimpleFIN/Plaid)
-    connections: tableCount('simplefin_connections') + tableCount('plaid_items'),
+    feedTxns: tableCount('transactions'), // durable bank-feed transactions (Plaid)
+    connections: tableCount('plaid_items'),
   };
 }
 

@@ -1,5 +1,4 @@
 import { getDb } from '../db/schema.js';
-import { refreshAllAccounts } from './simplefin.js';
 import { refreshAllPlaid } from './plaid.js';
 import { refreshAllProperties } from './zillow.js';
 import { recomputeMortgageBalances } from './mortgage.js';
@@ -105,16 +104,15 @@ export function describeRefreshFailures(failed: Map<string, unknown>): string {
   return `Couldn't refresh ${shown}${more} — everything else synced.`;
 }
 
-// Full refresh: pull latest from all account sources + Zillow, then snapshot.
-// Forces a fresh SimpleFIN fetch (bypasses the daily cache) since this is the
-// explicit "Sync now" action — newly-linked accounts should appear at once.
+// Full refresh: pull latest from Plaid + Zillow, then snapshot. The Plaid
+// refresh always bypasses the daily read cache, since this is the explicit
+// "Sync now" action — newly-linked accounts should appear at once.
 // Records the real-estate refresh time too, so the Setup "last synced" readout
 // reflects that this path also pulled property values.
 // This one is user-initiated, so it still reports failure after snapshotting —
 // "Sync now" must not claim success when a provider didn't sync.
 export async function refreshAndSnapshot(): Promise<void> {
   const failed = await settleRefreshes([
-    { label: 'SimpleFIN', run: () => refreshAllAccounts(true) },
     { label: 'Plaid', run: () => refreshAllPlaid() },
     { label: 'real estate', run: () => refreshAllProperties() },
   ]);
@@ -125,15 +123,13 @@ export async function refreshAndSnapshot(): Promise<void> {
   if (failed.size) throw new RefreshFailedError(describeRefreshFailures(failed), [...failed.keys()]);
 }
 
-// Accounts only (SimpleFIN + Plaid), then snapshot. Leaves real estate untouched.
-// Forces a fresh SimpleFIN fetch: this is the scheduled daily refresh, and the
-// 23h read-cache is also warmed by ordinary page views — so without force a
-// casual visit before 6 AM would make the cron a no-op and new transactions /
-// balances wouldn't sync until the cache happened to expire.
+// Accounts only (Plaid), then snapshot. Leaves real estate untouched. The
+// Plaid refresh bypasses the 23h read cache: this is the scheduled daily
+// refresh, and that cache is also warmed by ordinary page views — so a cached
+// read would make the cron a no-op until the cache happened to expire.
 // Unattended: a failing provider is logged, and the snapshot still happens.
 export async function refreshAccountsAndSnapshot(): Promise<void> {
   await settleRefreshes([
-    { label: 'SimpleFIN', run: () => refreshAllAccounts(true) },
     { label: 'Plaid', run: () => refreshAllPlaid() },
   ]);
   takeSnapshot();

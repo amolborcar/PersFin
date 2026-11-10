@@ -1,6 +1,5 @@
 import { getDb } from '../db/schema.js';
-import { getAllTransactions, type RawTxn } from './simplefin.js';
-import { syncFeedTransactions, readFeedTransactions, FEED_WINDOW_DAYS } from './feedStore.js';
+import { syncFeedTransactions, readFeedTransactions, FEED_WINDOW_DAYS, type RawTxn } from './feedStore.js';
 import { getAllPlaidTransactions } from './plaid.js';
 import { realEstateCarry, type RealEstateCarry } from './mortgage.js';
 import {
@@ -12,20 +11,18 @@ import {
   defaultGroupOf, groupColorOf, GROUP_COLOR, TAX_EMOJI,
 } from './categories.js';
 
-// Combined bank/card transaction feed for budgeting. SimpleFIN and Plaid expose
-// the identical RawTxn shape (Plaid normalized to SimpleFIN's "+ = money in"
-// sign), so the budget treats both feeds uniformly.
+// Bank/card transaction feed for budgeting, from Plaid (normalized to the
+// budget's "+ = money in" sign).
 //
 // Reading the feed goes through the durable transactions table: the provider
-// calls here trigger their ~daily lazy cache refresh (so page views keep data
-// fresh, as before), the current payloads are synced into the table, and the
-// table is what gets served — including rows older than the providers' 2-year
-// window, which used to silently age out of the budget.
+// call here triggers its ~daily lazy cache refresh (so page views keep data
+// fresh), the current payload is synced into the table, and the table is what
+// gets served — including rows older than the provider's 2-year window, which
+// used to silently age out of the budget.
 async function getFeedTransactions(): Promise<RawTxn[]> {
-  const [sf, plaid] = await Promise.all([getAllTransactions(), getAllPlaidTransactions()]);
+  const plaid = await getAllPlaidTransactions();
   const db = getDb();
   const since = Math.floor(Date.now() / 1000) - FEED_WINDOW_DAYS * 86400;
-  syncFeedTransactions(db, 'simplefin', sf, since);
   syncFeedTransactions(db, 'plaid', plaid, since);
   return readFeedTransactions(db);
 }
@@ -180,7 +177,7 @@ function merchantKey(payee: string, description: string): string {
 }
 
 // Trailing 4 digits of an account name (e.g. "Chase Sapphire (4167)" → "4167"),
-// a stable identifier shared between a SimpleFIN feed and a CSV export of the same
+// a stable identifier shared between the bank feed and a CSV export of the same
 // account even when the names are worded differently. '' when none are present.
 export const acctLast4 = (name: string): string => name.match(/(\d{4})\D*$/)?.[1] ?? '';
 
@@ -582,7 +579,7 @@ export function acceptImported(id?: string): number {
     : db.prepare('UPDATE imported_txns SET accepted = 1 WHERE accepted = 0').run().changes;
 }
 
-// Physically delete imported transactions that duplicate a SimpleFIN transaction
+// Physically delete imported transactions that duplicate a bank-feed transaction
 // (matched on date | amount | merchant). Returns how many were removed.
 const normAcct = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/\d+$/, '');
 function acctCompatible(a: string, b: string): boolean {
@@ -668,7 +665,7 @@ export function importTransactions(csv: string): { imported: number; skipped: nu
       const category = (ci >= 0 ? row[ci] : '')?.trim() || '';
       if (category) csvCats.add(category);
       const merchant = merchantKey(payee, '');
-      // Dedup key (also matches SimpleFIN at read time): date|amount|merchant|account.
+      // Dedup key (also matches the bank feed at read time): date|amount|merchant|account.
       const baseId = `imp|${date}|${amount.toFixed(2)}|${merchant}|${account.toLowerCase().slice(0, 20)}`;
       // Two genuinely identical rows in one file (same-day same-amount same-merchant
       // charges) must both import: the 2nd+ occurrence gets a `|n` suffix. The first
@@ -684,10 +681,10 @@ export function importTransactions(csv: string): { imported: number; skipped: nu
   return { imported, skipped };
 }
 
-// Build the merged, categorized transaction list (SimpleFIN + imported, deduped,
+// Build the merged, categorized transaction list (bank feed + imported, deduped,
 // brokerage trades excluded). Shared by the monthly budget and the projection.
 // Exported so recurring-bill detection sees the SAME merged, deduped, fully
-// categorized ledger the Budget view does (SimpleFIN + imported documents) —
+// categorized ledger the Budget view does (bank feed + imported documents) —
 // otherwise imported-only bills (utilities, pool/maid/landscaping, etc.) never
 // surface as recurring. Categories returned are canonical (un-renamed).
 export async function getCategorizedTransactions(): Promise<BudgetTxn[]> {
@@ -752,7 +749,7 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
   });
 
   // Merge imported (Monarch etc.) transactions, dropping any that duplicate a
-  // SimpleFIN transaction. A bank feed and a CSV export routinely disagree on a
+  // bank-feed transaction. A bank feed and a CSV export routinely disagree on a
   // transaction's posted date by a day or two AND word the merchant differently
   // ("Reformed Radiolo Payroll" vs "Reformed Radiology"), so the old exact
   // date|merchant match missed almost every real dupe — letting the same paycheck or
@@ -772,8 +769,8 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     const k = amountKey(e.amount);
     (byAmount.get(k) ?? byAmount.set(k, []).get(k)!).push(e);
   };
-  // Seed with SimpleFIN txns on their ORIGINAL (pre-flip) amount so a sign-reversal
-  // rule never breaks SimpleFIN↔import matching.
+  // Seed with bank-feed txns on their ORIGINAL (pre-flip) amount so a sign-reversal
+  // rule never breaks feed↔import matching.
   for (const t of sfRaw) addEntry({ amount: t.amount, day: postedDayMs(t.posted), merchant: merchantKey(t.payee, t.description), acct: acctLast4(t.accountName), consumed: false });
   // Find (and consume) an unmatched candidate that this imported row duplicates.
   // An earlier imported row with the same raw account string came from the same

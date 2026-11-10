@@ -1,6 +1,6 @@
 import { getDb } from '../db/schema.js';
-import { fetchTransactions, fetchHoldings, type TxnDelta } from './simplefin.js';
-import { fetchPlaidTransactions } from './plaid.js';
+import { fetchPlaidTransactions, fetchHoldings } from './plaid.js';
+import type { TxnDelta } from './holdings.js';
 import { fetchZhviHistories } from './zhvi.js';
 import { recordEstimatedObservation } from './observations.js';
 import { fetchDailyCloses, effectiveChain, closeAsOf, type PricePoint } from './prices.js';
@@ -108,8 +108,6 @@ export async function backfillHistory(opts: { onlyMissing?: boolean } = {}): Pro
     console.log('[backfill] history already complete — nothing to write');
     return 0;
   }
-  const sinceUnix = Math.floor(new Date(earliest + 'T00:00:00Z').getTime() / 1000);
-
   const accounts = db.prepare('SELECT id, balance, category FROM accounts WHERE hidden = 0').all() as AccountRow[];
   const properties = db
     .prepare(`SELECT id, address, zestimate, mortgage_balance,
@@ -123,15 +121,11 @@ export async function backfillHistory(opts: { onlyMissing?: boolean } = {}): Pro
   const today = new Date().toISOString().slice(0, 10);
 
   // Gather transactions, holdings, and per-property home-value history (ZHVI).
-  const [sfTxns, plaidTxns, holdingsByAccount, valueHistories] = await Promise.all([
-    fetchTransactions(sinceUnix),
+  const [txnsByAccount, holdingsByAccount, valueHistories] = await Promise.all([
     fetchPlaidTransactions(earliest, today),
     fetchHoldings(),
     fetchZhviHistories(properties.map(p => p.address)),
   ]);
-  const txnsByAccount = new Map<string, TxnDelta[]>();
-  for (const [id, list] of sfTxns) txnsByAccount.set(id, list);
-  for (const [id, list] of plaidTxns) txnsByAccount.set(id, [...(txnsByAccount.get(id) ?? []), ...list]);
 
   // Fetch a daily price series for every distinct ticker, then forward-fill it
   // across our snapshot dates for O(1) lookups.

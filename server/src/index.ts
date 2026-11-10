@@ -5,7 +5,7 @@ import { mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
-import simplefinRoutes from './routes/simplefin.js';
+import accountRoutes from './routes/accounts.js';
 import plaidRoutes from './routes/plaid.js';
 import propertyRoutes from './routes/properties.js';
 import assetRoutes from './routes/assets.js';
@@ -42,7 +42,7 @@ app.use('/api', localOriginGuard); // there is no login — see localOrigin.ts
 
 app.use(express.json({ limit: '15mb' })); // allow large CSV transaction uploads
 
-app.use('/api/simplefin', simplefinRoutes);
+app.use('/api/accounts', accountRoutes);
 app.use('/api/plaid', plaidRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/assets', assetRoutes);

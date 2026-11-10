@@ -410,7 +410,7 @@ const recentTxns = (txns: RecurringTxn[]): RecurringTxn[] =>
 
 // Build the per-merchant billing groups from the SAME merged + deduped +
 // categorized ledger the Budget view uses, so imported-document transactions
-// (utilities, pool/maid/landscaping, etc.) — not just SimpleFIN feeds — feed
+// (utilities, pool/maid/landscaping, etc.) — not just bank-feed rows — feed
 // recurring detection. Categories are canonical and already honor every
 // txn/base/smart rule the user has set.
 async function loadContext(): Promise<RecurringContext> {

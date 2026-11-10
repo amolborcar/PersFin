@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 
-// The durable transaction store. Provider payloads (SimpleFIN / Plaid) are
+// The durable transaction store. Provider payloads (Plaid) are
 // cached for ~a day and cover a rolling 2-year window; before this table
 // existed, budget history silently aged out of that window. Every read of the
 // feed now syncs the cached payload into `transactions` (append/refresh within
@@ -16,9 +16,11 @@ import type Database from 'better-sqlite3';
 
 type Db = Database.Database;
 
-export type FeedSource = 'simplefin' | 'plaid';
+// Rows from the removed SimpleFIN provider are deleted by migration 7, so
+// Plaid is the only source that remains.
+export type FeedSource = 'plaid';
 
-// The provider transaction window (both providers fetch this much history).
+// The provider transaction window (the provider fetches this much history).
 // Reconciliation below is scoped to it: inside the window the payload is
 // authoritative (pending reversals disappear), outside it rows are permanent.
 export const FEED_WINDOW_DAYS = 730;
@@ -26,48 +28,6 @@ export const FEED_WINDOW_DAYS = 730;
 export interface RawTxn {
   id: string; posted: number; transactedAt: number | null; amount: number; description: string; payee: string; memo: string;
   accountId: string; accountName: string;
-}
-
-// The slice of a SimpleFIN /accounts payload the feed mapping needs
-// (structural, so both the live service and the migration backfill can pass
-// their own parsed payloads).
-export interface SimpleFinFeedAccount {
-  id: string;
-  name: string;
-  transactions?: { id?: string; posted: number; transacted_at?: number; amount: string; description?: string; payee?: string; memo?: string }[];
-}
-
-/** Map SimpleFIN payload accounts to RawTxns (payload order preserved). */
-export function rawTxnsFromSimpleFin(accounts: SimpleFinFeedAccount[]): RawTxn[] {
-  const out: RawTxn[] = [];
-  // Occurrence counter for rows the provider sends without an id. Two identical
-  // same-day charges (same account/posted/amount) used to collapse onto one
-  // synthetic id; the second and later occurrences get a "#n" suffix. The
-  // first occurrence keeps the unsuffixed id so existing per-id overrides
-  // (amount edits) written under the old scheme still apply.
-  const synthSeen = new Map<string, number>();
-  const synthId = (acctId: string, posted: number, amount: string | number) => {
-    const key = `${acctId}-${posted}-${amount}`;
-    const n = (synthSeen.get(key) ?? 0) + 1;
-    synthSeen.set(key, n);
-    return n === 1 ? key : `${key}#${n}`;
-  };
-  for (const a of accounts) {
-    for (const t of a.transactions ?? []) {
-      out.push({
-        id: t.id ?? synthId(a.id, t.posted, t.amount),
-        posted: t.posted,
-        transactedAt: t.transacted_at ?? null,
-        amount: parseFloat(t.amount) || 0,
-        description: t.description ?? '',
-        payee: t.payee ?? '',
-        memo: t.memo ?? '',
-        accountId: a.id,
-        accountName: a.name,
-      });
-    }
-  }
-  return out;
 }
 
 /**
@@ -112,9 +72,8 @@ export function syncFeedTransactions(db: Db, source: FeedSource, txns: RawTxn[],
 }
 
 /**
- * The full durable feed, in insertion order (rowid). Insertion order matches
- * the old in-memory [...simplefin, ...plaid] concatenation on first sync, and
- * downstream consumers that care about ordering sort explicitly.
+ * The full durable feed, in insertion order (rowid). Downstream consumers that
+ * care about ordering sort explicitly.
  */
 export function readFeedTransactions(db: Db): RawTxn[] {
   const rows = db.prepare(`

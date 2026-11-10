@@ -11,7 +11,7 @@
  * up. Re-running resets the demo DB from scratch.
  */
 import { getDb } from '../src/db/schema.js';
-import { refreshConnection } from '../src/services/simplefin.js';
+import { seedPlaidItem, type SeedAccount } from '../src/db/plaidSeed.js';
 import { takeSnapshot } from '../src/services/netWorth.js';
 
 if (!process.env.DB_PATH) {
@@ -25,13 +25,12 @@ const db = getDb();
 // --- Wipe any prior demo content so re-runs are clean -----------------------
 for (const t of [
   'accounts', 'manual_assets', 'properties', 'net_worth_snapshots',
-  'simplefin_connections', 'plaid_items', 'property_value_history',
+  'plaid_items', 'property_value_history', 'balance_observations',
   'budget_targets', 'rules', 'asset_class_overrides',
   'provider_cache', 'transactions',
 ]) {
   try { db.exec(`DELETE FROM ${t}`); } catch { /* table may not exist yet */ }
 }
-db.exec(`DELETE FROM meta WHERE key LIKE 'sf_cache_%'`); // pre-provider_cache location
 
 // --- Deterministic tiny PRNG so the demo is identical every run -------------
 let _s = 1337;
@@ -43,57 +42,44 @@ const unix = (d: Date) => Math.floor(d.getTime() / 1000);
 const TODAY = new Date('2026-06-23T12:00:00Z');
 
 // --- Fictional accounts, with holdings summing to each balance --------------
-interface Txn { id: string; posted: number; amount: string; description: string; payee: string }
-interface Acct {
-  org: { name: string }; id: string; name: string; currency: string; balance: string;
-  'balance-date': number;
-  holdings?: { symbol: string; description: string; market_value: string; cost_basis?: string; purchase_price?: string; shares?: string }[];
-  transactions: Txn[];
-}
+// Shaped like a Plaid sync leaves them (see src/db/plaidSeed.ts). Holdings carry
+// the cases Plaid reports:
+//  - most positions report a total cost_basis,
+//  - MSFT and NVDA report none (Plaid's null, common for employer plans), to
+//    exercise the "no basis" → "—" path, and
+//  - a small cash position (Plaid security type "cash").
+const h = (symbol: string, description: string, marketValue: number, costBasis: number | null, shares: number | null = null) =>
+  ({ symbol, description, marketValue, costBasis, shares, acquired: null });
+type Acct = SeedAccount & { transactions: NonNullable<SeedAccount['transactions']> };
 
 const accounts: Acct[] = [
   {
-    org: { name: 'Fidelity' }, id: 'demo-fidelity-brokerage', name: 'Individual Brokerage',
-    currency: 'USD', balance: '184320.55', 'balance-date': unix(TODAY),
-    // cost_basis mirrors what SimpleFIN passes through from the institution:
-    //  - most lots report cost_basis directly,
-    //  - MSFT reports cost_basis "0.00" but a usable purchase_price × shares
-    //    (the common employer-plan case we reconstruct from), and
-    //  - NVDA reports nothing usable, to exercise the "no basis" → "—" path.
+    org: 'Fidelity', id: 'demo-fidelity-brokerage', name: 'Individual Brokerage', balance: 184320.55, category: 'brokerage',
     holdings: [
-      { symbol: 'VOO', description: 'Vanguard S&P 500 ETF', market_value: '78400.00', cost_basis: '54200.00' },
-      { symbol: 'VTI', description: 'Vanguard Total Stock Market ETF', market_value: '42900.30', cost_basis: '31500.00' },
-      { symbol: 'AAPL', description: 'Apple Inc', market_value: '18250.00', cost_basis: '9800.00' },
-      { symbol: 'MSFT', description: 'Microsoft Corp', market_value: '15600.00', cost_basis: '0.00', purchase_price: '280.00', shares: '40' },
-      { symbol: 'NVDA', description: 'NVIDIA Corp', market_value: '12300.25', cost_basis: '0.00' },
-      { symbol: 'VXUS', description: 'Vanguard Total Intl Stock ETF', market_value: '9870.00', cost_basis: '10450.00' },
-      { symbol: 'BND', description: 'Vanguard Total Bond Market ETF', market_value: '7000.00', cost_basis: '7350.00' },
+      h('VOO', 'Vanguard S&P 500 ETF', 78400.00, 54200.00),
+      h('VTI', 'Vanguard Total Stock Market ETF', 42900.30, 31500.00),
+      h('AAPL', 'Apple Inc', 18250.00, 9800.00),
+      h('MSFT', 'Microsoft Corp', 15600.00, null, 40),
+      h('NVDA', 'NVIDIA Corp', 12300.25, null),
+      h('VXUS', 'Vanguard Total Intl Stock ETF', 9870.00, 10450.00),
+      h('BND', 'Vanguard Total Bond Market ETF', 6000.00, 6300.00),
+      h('', 'Cash reserves', 1000.00, null),
     ],
     transactions: [],
   },
   {
-    org: { name: 'Vanguard' }, id: 'demo-vanguard-roth', name: 'Roth IRA',
-    currency: 'USD', balance: '96540.20', 'balance-date': unix(TODAY),
+    org: 'Vanguard', id: 'demo-vanguard-roth', name: 'Roth IRA', balance: 96540.20, category: 'brokerage',
     holdings: [
-      { symbol: 'VTI', description: 'Vanguard Total Stock Market ETF', market_value: '52000.00', cost_basis: '38000.00' },
-      { symbol: 'VXUS', description: 'Vanguard Total Intl Stock ETF', market_value: '24540.20', cost_basis: '21000.00' },
-      { symbol: 'BND', description: 'Vanguard Total Bond Market ETF', market_value: '12000.00', cost_basis: '12600.00' },
-      { symbol: 'QQQ', description: 'Invesco QQQ Trust', market_value: '8000.00', cost_basis: '5400.00' },
+      h('VTI', 'Vanguard Total Stock Market ETF', 52000.00, 38000.00),
+      h('VXUS', 'Vanguard Total Intl Stock ETF', 24540.20, 21000.00),
+      h('BND', 'Vanguard Total Bond Market ETF', 12000.00, 12600.00),
+      h('QQQ', 'Invesco QQQ Trust', 8000.00, 5400.00),
     ],
     transactions: [],
   },
-  {
-    org: { name: 'Chase' }, id: 'demo-chase-checking', name: 'Total Checking',
-    currency: 'USD', balance: '12430.18', 'balance-date': unix(TODAY), transactions: [],
-  },
-  {
-    org: { name: 'Ally' }, id: 'demo-ally-savings', name: 'Online Savings',
-    currency: 'USD', balance: '45000.00', 'balance-date': unix(TODAY), transactions: [],
-  },
-  {
-    org: { name: 'Chase' }, id: 'demo-chase-sapphire', name: 'Sapphire Credit Card',
-    currency: 'USD', balance: '-2841.55', 'balance-date': unix(TODAY), transactions: [],
-  },
+  { org: 'Chase', id: 'demo-chase-checking', name: 'Total Checking', balance: 12430.18, category: 'banking', transactions: [] },
+  { org: 'Ally', id: 'demo-ally-savings', name: 'Online Savings', balance: 45000.00, category: 'banking', transactions: [] },
+  { org: 'Chase', id: 'demo-chase-sapphire', name: 'Sapphire Credit Card', balance: -2841.55, category: 'credit', transactions: [] },
 ];
 const checking = accounts.find(a => a.id === 'demo-chase-checking')!;
 const card = accounts.find(a => a.id === 'demo-chase-sapphire')!;
@@ -104,7 +90,7 @@ let txnSeq = 0;
 const tx = (acct: Acct, day: Date, amount: number, payee: string) => {
   acct.transactions.push({
     id: `demo-tx-${txnSeq++}`, posted: unix(day),
-    amount: amount.toFixed(2), description: payee, payee,
+    amount: Math.round(amount * 100) / 100, description: payee, payee,
   });
 };
 const dayOf = (year: number, month0: number, day: number) =>
@@ -165,14 +151,10 @@ for (let back = 14; back >= 0; back--) {
   on(27, () => tx(checking, dayOf(y, m, 27), -jitter(2400, 0.2), 'CHASE CARD PAYMENT THANK YOU'));
 }
 
-// --- Persist the SimpleFIN connection + cached payload ----------------------
-const conn = db.prepare('INSERT INTO simplefin_connections (access_url) VALUES (?)')
-  .run('https://demo:demo@bridge.example.invalid/simplefin');
-const connId = Number(conn.lastInsertRowid);
-db.prepare('INSERT OR REPLACE INTO provider_cache (key, fetched_at, payload) VALUES (?, ?, ?)')
-  .run(`sf_cache_${connId}`, Date.now(), JSON.stringify(accounts));
-
-await refreshConnection(connId, 'https://demo:demo@bridge.example.invalid/simplefin');
+// --- Persist one Plaid item per institution + cached payloads ---------------
+const byOrg = new Map<string, Acct[]>();
+for (const a of accounts) byOrg.set(a.org, [...(byOrg.get(a.org) ?? []), a]);
+for (const [org, list] of byOrg) seedPlaidItem(db, `demo-item-${org.toLowerCase()}`, list);
 
 // --- Property (amortized mortgage) + a manual asset -------------------------
 db.prepare(`

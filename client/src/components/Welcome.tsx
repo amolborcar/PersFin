@@ -40,8 +40,8 @@ const STEPS: { icon: string; title: string; body: string }[] = [
 
 // Page 2 — how to obtain the keys/tokens each connection needs. KevFin uses YOUR
 // own provider credentials, so the data path stays yours end-to-end. Steps mirror
-// the in-app flows: ConnectPlaid ("+ Plaid"), ConnectSimpleFIN ("+ SimpleFIN"),
-// and ClaudeLoginGate (the AI login panel).
+// the in-app flows: ConnectPlaid ("+ Plaid") and ClaudeLoginGate (the AI login
+// panel).
 const CONNECTIONS: {
   icon: string;
   title: string;
@@ -61,18 +61,6 @@ const CONNECTIONS: {
       'In KevFin, go to Dashboard → Financial Accounts → Manage connections, click “+ Plaid”, paste both keys, and Save — then choose your institution in the window that opens.',
     ],
     link: { href: 'https://dashboard.plaid.com/developers/keys', label: 'Get your Plaid keys →' },
-  },
-  {
-    icon: '🔗',
-    title: 'SimpleFIN',
-    cost: 'Low-cost subscription',
-    body: 'A simple aggregator that often reaches accounts Plaid does not. You connect it with a one-time setup token.',
-    steps: [
-      'Create a SimpleFIN Bridge account (a small subscription fee) and link your banks there.',
-      'On your SimpleFIN account page, generate a new setup token and copy it.',
-      'In KevFin, go to Dashboard → Financial Accounts → Manage connections, click “+ SimpleFIN”, paste the token, and Connect.',
-    ],
-    link: { href: 'https://beta-bridge.simplefin.org/my-account', label: 'Get a SimpleFIN setup token →' },
   },
   {
     icon: '🤖',

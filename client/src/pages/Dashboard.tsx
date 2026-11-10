@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import NetWorthChart from '../components/NetWorthChart.tsx';
-import ConnectSimpleFIN from '../components/ConnectSimpleFIN.tsx';
 import ConnectPlaid from '../components/ConnectPlaid.tsx';
 import AddProperty from '../components/AddProperty.tsx';
 import ZillowKey from '../components/ZillowKey.tsx';
@@ -14,7 +13,7 @@ import { sinceLabel, visitTitle } from '../lib/sinceLabel.ts';
 import { fmtMoney, fmtDate, fmtMonth } from '../lib/format.ts';
 import { relTime, newestTimestamp } from '../lib/relTime.ts';
 import type {
-  Snapshot, Account, ManualAsset, Property, Connection, PlaidItem, AccountCategory,
+  Snapshot, Account, ManualAsset, Property, PlaidItem, AccountCategory,
 } from '@shared/apiTypes';
 
 // The dashboard page: net-worth KPIs and history chart, connected accounts,
@@ -890,7 +889,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
 
   const { data: history, loading: historyLoading, error: historyError, refetch: refetchHistory } = useApi<Snapshot[]>('/api/net-worth/history?days=10000');
   const { data: breakdown, loading: breakdownLoading, error: breakdownError, refetch: refetchBreakdown } = useApi<{ accounts: Account[]; manualAssets: ManualAsset[]; properties: Property[] }>('/api/net-worth/breakdown');
-  const { data: connections, refetch: refetchConnections } = useApi<Connection[]>('/api/simplefin/connections');
   const { data: plaidItems, refetch: refetchPlaid } = useApi<PlaidItem[]>('/api/plaid/items');
 
   const latest = history?.[0];
@@ -942,9 +940,8 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
   const refetchAll = useCallback(() => {
     refetchHistory();
     refetchBreakdown();
-    refetchConnections();
     refetchPlaid();
-  }, [refetchHistory, refetchBreakdown, refetchConnections, refetchPlaid]);
+  }, [refetchHistory, refetchBreakdown, refetchPlaid]);
 
   // Mirrors Setup's "Sync now" (SyncSection.syncNow): same endpoint, same
   // force-refresh of every source. The server snapshots even when one provider
@@ -1026,12 +1023,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
     refetchAll();
   }
 
-  async function removeConnection(id: number, label: string) {
-    if (!confirm(`Remove ${label}? Its accounts will stop syncing and be removed from your net worth.`)) return;
-    await fetch(`/api/simplefin/connections/${id}`, { method: 'DELETE' });
-    refetchAll();
-  }
-
   async function removePlaidItem(itemId: string, label: string) {
     if (!confirm(`Remove ${label}? Its accounts will stop syncing and be removed from your net worth.`)) return;
     await fetch(`/api/plaid/items/${itemId}`, { method: 'DELETE' });
@@ -1039,7 +1030,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
   }
 
   async function recategorize(id: string, category: Category) {
-    await fetch(`/api/simplefin/accounts/${id}`, {
+    await fetch(`/api/accounts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ category }),
@@ -1048,7 +1039,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
   }
 
   async function renameAccount(id: string, name: string | null) {
-    await fetch(`/api/simplefin/accounts/${id}`, {
+    await fetch(`/api/accounts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -1057,7 +1048,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
   }
 
   async function hideAccount(id: string, hidden: boolean) {
-    await fetch(`/api/simplefin/accounts/${id}`, {
+    await fetch(`/api/accounts/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hidden }),
@@ -1331,28 +1322,15 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
             >
               {showConnections ? '▾' : '▸'} Manage connections
               {(() => {
-                const count = (connections?.length ?? 0) + (plaidItems?.length ?? 0);
+                const count = plaidItems?.length ?? 0;
                 return count > 0 ? <span style={{ opacity: 0.6, marginLeft: 6 }}>({count})</span> : null;
               })()}
             </button>
             {showConnections && (
               <div style={{ marginTop: 12 }}>
-                {/* Grouped by provider. A SimpleFIN connection is one token that can span
-                    many institutions; each Plaid item is one institution's login. Either
-                    way, one row = one thing Remove disconnects. */}
+                {/* Each Plaid item is one institution's login; one row = one thing
+                    Remove disconnects. */}
                 {[
-                  {
-                    provider: 'SimpleFIN',
-                    rows: (connections ?? []).map(conn => {
-                      const n = conn.institutions ? conn.institutions.split(', ').length : 0;
-                      return {
-                        key: `sf-${conn.id}`,
-                        title: conn.institutions || 'Pending…',
-                        detail: `${plural(conn.account_count, 'account')}${n > 1 ? ` · ${plural(n, 'institution')}` : ''}`,
-                        onRemove: () => removeConnection(conn.id, n > 1 ? `this SimpleFIN connection (${n} institutions)` : conn.institutions || 'this SimpleFIN connection'),
-                      };
-                    }),
-                  },
                   {
                     provider: 'Plaid',
                     rows: (plaidItems ?? []).map(item => ({
@@ -1383,7 +1361,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
                 ))}
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                   <ConnectPlaid onSuccess={refetchAll} />
-                  <ConnectSimpleFIN onSuccess={refetchAll} />
                 </div>
               </div>
             )}

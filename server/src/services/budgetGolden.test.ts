@@ -18,7 +18,7 @@ import path from 'path';
 const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-golden-'));
 process.env.DB_PATH = path.join(TMP, 'golden.db');
 
-const { refreshConnection } = await import('./simplefin.js');
+const { seedPlaidItem } = await import('../db/plaidSeed.js');
 const budget = await import('./budget.js');
 const { getDb } = await import('../db/schema.js');
 
@@ -27,7 +27,7 @@ const { getDb } = await import('../db/schema.js');
 const NOW = new Date('2026-06-23T12:00:00Z');
 const unix = (iso: string) => Math.floor(Date.parse(iso + 'T12:00:00Z') / 1000);
 
-interface FeedTxn { id?: string; posted: number; amount: string; description: string; payee: string }
+interface FeedTxn { id: string; posted: number; amount: string; description: string; payee: string }
 interface FeedAcct {
   org: { name: string }; id: string; name: string; currency: string; balance: string;
   'balance-date': number; transactions: FeedTxn[];
@@ -36,7 +36,7 @@ interface FeedAcct {
 // Fixed feed: no randomness, no relative dates. Covers income clustering
 // (payee variants of one employer), transfer-pair detection across accounts,
 // credit-card payments with a tracked card, a brokerage account (excluded),
-// id-less rows (synthetic ids), and every rule type applied in seed().
+// two identical same-day rows, and every rule type applied in seed().
 function buildFeed(): FeedAcct[] {
   const checking: FeedAcct = {
     org: { name: 'Chase' }, id: 'g-checking', name: 'Total Checking (1234)',
@@ -92,21 +92,22 @@ function buildFeed(): FeedAcct[] {
   tx(checking, '2026-05-02', 1800, 'BILT HOUSING #42');
   // Amount-override target (id referenced in seed()).
   tx(card, '2026-05-21', -112.4, 'SAFEWAY', 'SAFEWAY', 'g-override-me');
-  // Two identical id-less same-day rows: synthetic-id occurrence handling.
+  // Two identical same-day rows must both count. Plaid gives every row its own
+  // id; these two keep the ids the old SimpleFIN synthetic-id scheme produced,
+  // so the golden snapshots stay byte-identical across the provider switch.
   tx(card, '2026-05-09', -6.75, 'STARBUCKS', 'STARBUCKS');
-  checking.transactions.push({ posted: unix('2026-05-14'), amount: '-19.99', description: 'GENERIC POS', payee: 'GENERIC POS' });
-  checking.transactions.push({ posted: unix('2026-05-14'), amount: '-19.99', description: 'GENERIC POS', payee: 'GENERIC POS' });
+  checking.transactions.push({ id: 'g-checking-1778760000--19.99', posted: unix('2026-05-14'), amount: '-19.99', description: 'GENERIC POS', payee: 'GENERIC POS' });
+  checking.transactions.push({ id: 'g-checking-1778760000--19.99#2', posted: unix('2026-05-14'), amount: '-19.99', description: 'GENERIC POS', payee: 'GENERIC POS' });
 
   return [checking, savings, card, brokerage];
 }
 
 async function seed() {
   const db = getDb();
-  db.prepare('INSERT INTO simplefin_connections (id, access_url) VALUES (1, ?)')
-    .run('https://demo:demo@bridge.example.invalid/simplefin');
-  db.prepare('INSERT OR REPLACE INTO provider_cache (key, fetched_at, payload) VALUES (?, ?, ?)')
-    .run('sf_cache_1', NOW.getTime(), JSON.stringify(buildFeed()));
-  await refreshConnection(1, 'https://demo:demo@bridge.example.invalid/simplefin');
+  seedPlaidItem(db, 'golden-item', buildFeed().map(a => ({
+    id: a.id, org: a.org.name, name: a.name, balance: parseFloat(a.balance),
+    transactions: a.transactions.map(t => ({ ...t, amount: parseFloat(t.amount) })),
+  })), NOW.getTime());
 
   // Every rule type, exactly as the UI would create them.
   await budget.applyCategoryRule('local vendor llc', 'Home Services', 'all');

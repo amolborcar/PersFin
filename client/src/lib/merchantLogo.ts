@@ -141,7 +141,6 @@ const DOMAINS: [string, string][] = [
   ['zelle', 'zellepay.com'],
   ['paypal', 'paypal.com'],
   ['cash app', 'cash.app'],
-  ['simplefin', 'simplefin.org'],
   ['health equity', 'healthequity.com'],
   ['healthequity', 'healthequity.com'],
   ['equinox', 'equinox.com'],

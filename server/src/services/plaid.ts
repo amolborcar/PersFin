@@ -6,11 +6,14 @@ import {
   CountryCode,
   type AccountBase,
   type Transaction,
+  type Holding as PlaidHolding,
+  type Security,
 } from 'plaid';
 import { getDb } from '../db/schema.js';
 import { readProviderCache, writeProviderCache, deleteProviderCache } from '../db/providerCache.js';
 import { categorize, type Category } from '../util/categorize.js';
 import { FEED_WINDOW_DAYS, type RawTxn } from './feedStore.js';
+import type { Holding, TxnDelta } from './holdings.js';
 import { recordRealObservation } from './observations.js';
 import { ProviderRefreshError, safePlaidReason, safeLabel, type ItemFailure } from './refreshErrors.js';
 
@@ -57,9 +60,10 @@ export function plaidConfigured(): boolean {
 export async function createLinkToken(userId: string): Promise<string> {
   const res = await getPlaidClient().linkTokenCreate({
     user: { client_user_id: userId },
-    client_name: 'KevFin Net Worth Tracker',
-    // transactions covers both Frec and Bilt; investments is pulled in only
-    // for institutions that support it (Frec) so Bilt isn't blocked.
+    client_name: 'KevFin',
+    // Transactions is required for every institution. Investments (holdings for
+    // the Investments page and the brokerage backfill) is requested only where
+    // the institution supports it, so a bank or card without it isn't blocked.
     products: [Products.Transactions],
     required_if_supported_products: [Products.Investments],
     country_codes: [CountryCode.Us],
@@ -174,34 +178,42 @@ export async function refreshItem(itemId: string, accessToken: string, instituti
     recordRealObservation(db, acct.account_id, new Date().toISOString().slice(0, 10), balance);
   }
 
-  // Pull (and cache) this item's transaction feed too, so budgeting sees Plaid
-  // accounts the same way it sees SimpleFIN ones. Forced because this IS the
-  // refresh path (daily cron / manual "Sync now" / initial link).
-  await getItemTransactions(itemId, accessToken, true).catch(err =>
-    console.error(`[plaid] transaction refresh failed for item ${itemId}:`, plaidErrorDetail(err)));
+  // Pull (and cache) this item's transaction feed and investment holdings too.
+  // Forced because this IS the refresh path (daily sync / manual "Sync now" /
+  // initial link). Independent calls, so they run in parallel.
+  const hasBrokerage = (res.data.accounts as AccountBase[]).some(a => plaidCategory(a) === 'brokerage');
+  await Promise.all([
+    getItemTransactions(itemId, accessToken, true).catch(err =>
+      console.error(`[plaid] transaction refresh failed for item ${itemId}:`, plaidErrorDetail(err))),
+    hasBrokerage ? getItemHoldings(itemId, accessToken, true) : Promise.resolve(),
+  ]);
 }
 
-export interface TxnDelta { date: string; delta: number }
-
-// --- Transaction feed (for budgeting) --------------------------------------
-// Mirrors SimpleFIN: the full transaction list per item is fetched at most once
-// per ~24h and cached in memory + the DB (survives restarts), so the Budget page
-// can read it cheaply on every load instead of re-hitting Plaid.
-const TXN_CACHE_MS = 23 * 60 * 60 * 1000; // ~once per day, matching SimpleFIN
-const TXN_WINDOW_DAYS = FEED_WINDOW_DAYS; // 2y of transactions, matching SimpleFIN
+// --- Cached provider feeds -------------------------------------------------
+// The full transaction list and the investment holdings per item are fetched at
+// most once per ~24h and cached in memory + the DB (survives restarts), so the
+// Budget and Investments pages can read them cheaply on every load instead of
+// re-hitting Plaid. Without Plaid keys (keys removed, demo DB, tests) the
+// cached copies are served as-is and no live call is attempted.
+const TXN_CACHE_MS = 23 * 60 * 60 * 1000; // ~once per day
+const TXN_WINDOW_DAYS = FEED_WINDOW_DAYS; // 2y of transactions
 const txnMemCache = new Map<string, { fetchedAt: number; txns: RawTxn[] }>();
+const holdingsMemCache = new Map<string, { fetchedAt: number; byAccount: Record<string, Holding[]> }>();
 
-// Drop the in-memory transaction cache — used by the "erase all data" reset so
-// a wiped DB isn't silently repopulated from a stale in-process copy.
+// Drop the in-memory caches — used by the "erase all data" reset so a wiped DB
+// isn't silently repopulated from a stale in-process copy.
 export function clearPlaidCaches(): void {
   txnMemCache.clear();
+  holdingsMemCache.clear();
 }
 
-// Forget one item's cached feed (memory + DB) when it's disconnected: the raw
-// transaction payload is user data and shouldn't linger after the link is gone.
+// Forget one item's cached feeds (memory + DB) when it's disconnected: the raw
+// payloads are user data and shouldn't linger after the link is gone.
 export function dropPlaidItemCache(itemId: string): void {
   txnMemCache.delete(itemId);
+  holdingsMemCache.delete(itemId);
   deleteProviderCache(`plaid_txn_cache_${itemId}`);
+  deleteProviderCache(`plaid_holdings_cache_${itemId}`);
 }
 
 function readTxnDbCache(itemId: string): { fetchedAt: number; txns: RawTxn[] } | null {
@@ -214,8 +226,8 @@ const toUnix = (date: string | null): number | null =>
   date ? Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000) : null;
 
 // Map a Plaid transaction into KevFin's RawTxn shape. Plaid amounts are positive
-// when money LEAVES the account; SimpleFIN (and the budget) use the opposite
-// convention (+ = money in), so flip the sign here.
+// when money LEAVES the account; the budget uses the opposite convention
+// (+ = money in), so flip the sign here.
 function toRawTxn(t: Transaction, names: Map<string, string>): RawTxn {
   return {
     id: t.transaction_id,
@@ -262,6 +274,7 @@ async function getItemTransactions(itemId: string, accessToken: string, force = 
   const now = Date.now();
 
   const mem = txnMemCache.get(itemId);
+  if (!plaidConfigured()) return mem?.txns ?? readTxnDbCache(itemId)?.txns ?? [];
   if (!force && mem && now - mem.fetchedAt < TXN_CACHE_MS) return mem.txns;
 
   if (!force) {
@@ -282,12 +295,97 @@ async function getItemTransactions(itemId: string, accessToken: string, force = 
   }
 }
 
+const allItems = () =>
+  getDb().prepare('SELECT item_id, access_token FROM plaid_items').all() as { item_id: string; access_token: string }[];
+
 /** All Plaid transactions across items (from the daily cache), for budgeting. */
 export async function getAllPlaidTransactions(): Promise<RawTxn[]> {
-  if (!plaidConfigured()) return [];
-  const items = getDb().prepare('SELECT item_id, access_token FROM plaid_items').all() as { item_id: string; access_token: string }[];
-  const lists = await Promise.all(items.map(i => getItemTransactions(i.item_id, i.access_token)));
+  const lists = await Promise.all(allItems().map(i => getItemTransactions(i.item_id, i.access_token)));
   return lists.flat();
+}
+
+// --- Investment holdings ---------------------------------------------------
+
+// Map Plaid's holdings + securities into KevFin's Holding shape, per account.
+//  - cost_basis is Plaid's total basis for the position; null or ≤ 0 means
+//    "unknown" (many employer plans report nothing), never a fake zero.
+//  - Plaid reports no lot open date, so `acquired` is always null.
+//  - A cash position (security type "cash", ticker like "CUR:USD") carries no
+//    priceable ticker. It is described as "Cash reserves" so the allocation
+//    view's existing cash patterns bucket it as cash rather than as equity.
+export function holdingsFromPlaid(holdings: PlaidHolding[], securities: Security[]): Map<string, Holding[]> {
+  const secById = new Map(securities.map(s => [s.security_id, s]));
+  const out = new Map<string, Holding[]>();
+  for (const h of holdings) {
+    const sec = secById.get(h.security_id);
+    const isCash = sec?.type === 'cash';
+    const list = out.get(h.account_id) ?? [];
+    list.push({
+      symbol: isCash ? '' : (sec?.ticker_symbol ?? '').trim(),
+      description: isCash ? 'Cash reserves' : (sec?.name ?? '').trim(),
+      marketValue: Number.isFinite(h.institution_value) ? h.institution_value : 0,
+      costBasis: h.cost_basis != null && h.cost_basis > 0 ? h.cost_basis : null,
+      shares: !isCash && Number.isFinite(h.quantity) && h.quantity !== 0 ? h.quantity : null,
+      acquired: null,
+    });
+    out.set(h.account_id, list);
+  }
+  return out;
+}
+
+function readHoldingsDbCache(itemId: string): { fetchedAt: number; byAccount: Record<string, Holding[]> } | null {
+  const entry = readProviderCache<Record<string, Holding[]>>(`plaid_holdings_cache_${itemId}`);
+  return entry ? { fetchedAt: entry.fetchedAt, byAccount: entry.payload } : null;
+}
+
+/** Cached holdings for one item — re-fetched at most once per TXN_CACHE_MS. */
+async function getItemHoldings(itemId: string, accessToken: string, force = false): Promise<Record<string, Holding[]>> {
+  const now = Date.now();
+
+  const mem = holdingsMemCache.get(itemId);
+  if (!plaidConfigured()) return mem?.byAccount ?? readHoldingsDbCache(itemId)?.byAccount ?? {};
+  if (!force && mem && now - mem.fetchedAt < TXN_CACHE_MS) return mem.byAccount;
+
+  if (!force) {
+    const db = readHoldingsDbCache(itemId);
+    if (db && now - db.fetchedAt < TXN_CACHE_MS) { holdingsMemCache.set(itemId, db); return db.byAccount; }
+  }
+
+  try {
+    const res = await getPlaidClient().investmentsHoldingsGet({ access_token: accessToken });
+    const byAccount = Object.fromEntries(holdingsFromPlaid(res.data.holdings, res.data.securities));
+    const entry = { fetchedAt: now, byAccount };
+    holdingsMemCache.set(itemId, entry);
+    writeProviderCache(`plaid_holdings_cache_${itemId}`, { fetchedAt: now, payload: byAccount });
+    console.log(`[plaid] fetched holdings for item ${itemId} (${Object.keys(byAccount).length} accounts) — cached for ~24h`);
+    return byAccount;
+  } catch (err) {
+    // Items without investment consent (PRODUCTS_NOT_SUPPORTED,
+    // NO_INVESTMENT_ACCOUNTS, ADDITIONAL_CONSENT_REQUIRED) land here too: the
+    // account then shows its balance with no holdings breakdown.
+    // Remember the fallback in memory for the cache period, so a page load
+    // doesn't re-hit Plaid for an item that just refused; the next forced
+    // refresh (daily sync / "Sync now") tries again.
+    console.error(`[plaid] holdings fetch failed for item ${itemId}:`, plaidErrorDetail(err));
+    const byAccount = mem?.byAccount ?? readHoldingsDbCache(itemId)?.byAccount ?? {}; // fall back to stale
+    holdingsMemCache.set(itemId, { fetchedAt: now, byAccount });
+    return byAccount;
+  }
+}
+
+/** Current holdings per account id, across items (from the daily cache). */
+export async function fetchHoldings(): Promise<Map<string, Holding[]>> {
+  // Only items with a brokerage account have holdings worth asking for.
+  const items = getDb().prepare(`
+    SELECT item_id, access_token FROM plaid_items pi
+    WHERE EXISTS (SELECT 1 FROM accounts a WHERE a.plaid_item_id = pi.item_id AND a.category = 'brokerage')
+  `).all() as { item_id: string; access_token: string }[];
+  const perItem = await Promise.all(items.map(i => getItemHoldings(i.item_id, i.access_token)));
+  const out = new Map<string, Holding[]>();
+  for (const byAccount of perItem) {
+    for (const [accountId, list] of Object.entries(byAccount)) out.set(accountId, list);
+  }
+  return out;
 }
 
 /**
