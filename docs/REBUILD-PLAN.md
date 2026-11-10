@@ -4,6 +4,19 @@ This plan changes KevFin into a personal, YNAB-style budgeting app for one
 user on one always-on Mac mini. Each phase is one commit (or one PR), so CI
 checks each step.
 
+The repository `amolborcar/PersFin` is independent. It left the fork network
+of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
+
+## Status
+
+| Phase | Status |
+|---|---|
+| 0 Baseline | Done. Build passes; tests pass (server 383, client 153). |
+| 1 SimpleFIN → Plaid | In progress |
+| 2–9 | Not started |
+
+Update this table at the end of each phase.
+
 ## Decisions
 
 | # | Topic | Decision |
@@ -227,8 +240,16 @@ Recharts, with data shaping in `client/src/lib/*.ts` and Vitest tests.
 
 1. Rewrite `README.md`. Update `CLAUDE.md`, `DESKTOP.md`, `docs/ADVANCED.md`,
    and `kevfin.env.example`.
-2. Remove dead code and unused packages.
-3. Optional rename of the app, with a one-time data path migration.
+2. Remove links to the upstream project `kxl3785/KevFin`: releases, issues, and
+   the donation link in `README.md`; the `ghcr.io/kxl3785/kevfin` image in docs
+   (if Phase 3 left any).
+3. In `.github/workflows/ci.yml`, remove the step that fast-forwards
+   `production` after a push to `main`.
+4. Delete `.github/workflows/update-irs-limits.yml` and
+   `.github/agent-tasks/update-irs-limits.md`, or set up the `AGENT_CMD` secret.
+   This repository does not have that secret.
+5. Remove dead code and unused packages.
+6. Optional rename of the app, with a one-time data path migration.
 
 ## Order
 
