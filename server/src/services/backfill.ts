@@ -1,10 +1,8 @@
 import { getDb } from '../db/schema.js';
 import { fetchPlaidTransactions, fetchHoldings } from './plaid.js';
 import type { TxnDelta } from './holdings.js';
-import { fetchZhviHistories } from './zhvi.js';
 import { recordEstimatedObservation } from './observations.js';
 import { fetchDailyCloses, effectiveChain, closeAsOf, type PricePoint } from './prices.js';
-import { mortgageBalanceAsOf } from './mortgage.js';
 
 const DAYS_BACK = 1825; // ~5 years of daily snapshots (enables 3Y/5Y ranges)
 
@@ -12,16 +10,6 @@ interface AccountRow {
   id: string;
   balance: number;
   category: string;
-}
-interface PropertyRow {
-  id: number;
-  address: string;
-  zestimate: number | null;
-  mortgage_balance: number;
-  mortgage_principal: number | null;
-  mortgage_rate: number | null;
-  mortgage_start: string | null;
-  mortgage_term_years: number | null;
 }
 
 /** Daily date strings for the last N days, oldest first (excludes today). */
@@ -78,10 +66,8 @@ function balanceAsOf(current: number, txns: TxnDelta[], date: string): number {
 /**
  * Backfill monthly net-worth snapshots from all sources.
  * - cash/banking/credit/other accounts: reconstructed from transactions (accurate)
- * - brokerage accounts: each holding scaled by its ticker's historical price
- *   (Stooq); cash and non-tickered holdings (529s, crypto) held flat
- * - real estate: tax-assessment history scaled to the current Zestimate (Zillow
- *   exposes no Zestimate history; assessed values are the best proxy), minus mortgage
+ * - brokerage accounts: each holding scaled by its ticker's historical price;
+ *   cash and non-tickered holdings (529s, crypto) held flat
  * - manual assets: held at current value
  * Returns the number of historical snapshots written.
  *
@@ -109,22 +95,16 @@ export async function backfillHistory(opts: { onlyMissing?: boolean } = {}): Pro
     return 0;
   }
   const accounts = db.prepare('SELECT id, balance, category FROM accounts WHERE hidden = 0').all() as AccountRow[];
-  const properties = db
-    .prepare(`SELECT id, address, zestimate, mortgage_balance,
-                     mortgage_principal, mortgage_rate, mortgage_start, mortgage_term_years
-              FROM properties`)
-    .all() as PropertyRow[];
   const { manual_total } = db
     .prepare('SELECT COALESCE(SUM(value),0) AS manual_total FROM manual_assets')
     .get() as { manual_total: number };
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Gather transactions, holdings, and per-property home-value history (ZHVI).
-  const [txnsByAccount, holdingsByAccount, valueHistories] = await Promise.all([
+  // Gather transactions and holdings.
+  const [txnsByAccount, holdingsByAccount] = await Promise.all([
     fetchPlaidTransactions(earliest, today),
     fetchHoldings(),
-    fetchZhviHistories(properties.map(p => p.address)),
   ]);
 
   // Fetch a daily price series for every distinct ticker, then forward-fill it
@@ -178,61 +158,11 @@ export async function backfillHistory(opts: { onlyMissing?: boolean } = {}): Pro
     });
   }
 
-  // Manually-entered per-property Zestimate history takes precedence over ZHVI.
-  const manualRows = db
-    .prepare('SELECT property_id, date, value FROM property_value_history ORDER BY date')
-    .all() as { property_id: number; date: string; value: number }[];
-  const manualByProp = new Map<number, { date: string; value: number }[]>();
-  for (const r of manualRows) {
-    const list = manualByProp.get(r.property_id) ?? [];
-    list.push({ date: r.date, value: r.value });
-    manualByProp.set(r.property_id, list);
-  }
-
-  // Build a per-property value function. Preference order:
-  //  1. manual Zestimate history (used directly; the current Zestimate is
-  //     appended as the latest point so the curve meets today's value),
-  //  2. ZHVI for the ZIP, scaled so its latest point equals the Zestimate,
-  //  3. flat current Zestimate.
-  // Points are linearly interpolated; held flat before the first / after the last.
-  const dayNum = (d: string) => new Date(d + 'T00:00:00Z').getTime() / 86400_000;
-  const propValueAsOf = properties.map((p, i) => {
-    const manual = manualByProp.get(p.id);
-    let hist: { date: string; value: number }[];
-    let ratio: number;
-    if (manual && manual.length) {
-      hist = p.zestimate && manual[manual.length - 1].date < today
-        ? [...manual, { date: today, value: p.zestimate }]
-        : manual;
-      ratio = 1; // manual points are actual values — no scaling
-    } else {
-      // No Zestimate → the live snapshot counts the home as 0 (0 − balance); the
-      // raw ZIP median must not stand in for it, so skip the ZHVI curve entirely.
-      hist = p.zestimate ? (valueHistories[i] ?? []) : [];
-      const latest = hist.length ? hist[hist.length - 1].value : 0;
-      ratio = latest > 0 && p.zestimate ? p.zestimate / latest : 1;
-    }
-    return (date: string): number => {
-      if (hist.length === 0) return p.zestimate ?? 0;           // no history → hold current
-      if (date <= hist[0].date) return hist[0].value * ratio;   // before first point
-      if (date >= hist[hist.length - 1].date) return hist[hist.length - 1].value * ratio; // after last
-      for (let k = 1; k < hist.length; k++) {
-        if (date <= hist[k].date) {
-          const a = hist[k - 1], b = hist[k];
-          const f = (dayNum(date) - dayNum(a.date)) / (dayNum(b.date) - dayNum(a.date));
-          return (a.value + (b.value - a.value) * f) * ratio;
-        }
-      }
-      return hist[hist.length - 1].value * ratio;
-    };
-  });
-
   const upsert = db.prepare(`
-    INSERT INTO net_worth_snapshots (date, accounts_total, real_estate_total, net_worth)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO net_worth_snapshots (date, accounts_total, net_worth)
+    VALUES (?, ?, ?)
     ON CONFLICT(date) DO UPDATE SET
       accounts_total = excluded.accounts_total,
-      real_estate_total = excluded.real_estate_total,
       net_worth = excluded.net_worth
   `);
 
@@ -249,16 +179,7 @@ export async function backfillHistory(opts: { onlyMissing?: boolean } = {}): Pro
         recordEstimatedObservation(db, a.id, date, value);
       }
 
-      let realEstateTotal = 0;
-      properties.forEach((p, i) => {
-        // The balance owed *on that date*, not today's — otherwise every past
-        // snapshot gets credited with principal paid down since.
-        const equity = propValueAsOf[i](date) - mortgageBalanceAsOf(p, date);
-        realEstateTotal += equity;
-        recordEstimatedObservation(db, `property:${p.id}`, date, equity);
-      });
-
-      upsert.run(date, accountsTotal, realEstateTotal, accountsTotal + realEstateTotal);
+      upsert.run(date, accountsTotal, accountsTotal);
     }
   });
   writeAll(writeDates);

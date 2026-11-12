@@ -26,8 +26,8 @@ interface SystemStatus {
   dbPath: string;
   version: string;
   dailySnapshotEnabled: boolean;
-  lastSync: { accounts: string | null; realEstate: string | null; snapshot: string | null };
-  counts: { accounts: number; properties: number; manualAssets: number; snapshots: number; importedTxns: number; feedTxns?: number; connections: number };
+  lastSync: { accounts: string | null; snapshot: string | null };
+  counts: { accounts: number; manualAssets: number; snapshots: number; importedTxns: number; feedTxns?: number; connections: number };
 }
 
 // Epoch ms for a stored timestamp, or NaN. updated_at is SQLite datetime('now'):
@@ -266,7 +266,7 @@ function ThemeRow() {
 
 // ---- Sync --------------------------------------------------------------------
 // "Sync now" forces a fresh pull of everything external — linked accounts
-// (Plaid) and real-estate values (Zillow) — then records a net-worth
+// (Plaid) — then records a net-worth
 // point. The daily midnight history point runs automatically, so no toggle.
 function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null; refetch: () => void; onChanged: () => void }) {
   const [syncing, setSyncing] = useState(false);
@@ -286,8 +286,8 @@ function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null;
     }
   }
 
-  // Freshness keys off whichever of accounts / real estate synced most recently.
-  const stamps = [status?.lastSync.accounts, status?.lastSync.realEstate]
+  // Freshness keys off when the accounts last synced.
+  const stamps = [status?.lastSync.accounts]
     .filter((s): s is string => !!s).map(parseTs).filter(t => !isNaN(t));
   const newest = stamps.length ? Math.max(...stamps) : null;
   const fresh = newest != null && Date.now() - newest < 86400_000;
@@ -297,14 +297,14 @@ function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null;
     <Row
       icon={<IconRefresh />}
       title="Sync now"
-      tip="Pull the latest from all linked accounts and real estate, then record a net-worth point"
+      tip="Pull the latest from all linked accounts, then record a net-worth point"
       onClick={syncNow}
       disabled={syncing}
       subtitle={error
         ? <span style={{ color: 'var(--red)' }}>{error}</span>
         : syncing ? 'Syncing…'
         : !status ? 'Checking…'
-        : `Accounts and real estate · last synced ${relTime(lastIso)}`}
+        : `Accounts · last synced ${relTime(lastIso)}`}
       right={syncing || !status ? <Spinner />
         : <span style={{ color: fresh ? 'var(--green)' : 'var(--muted)' }}>{fresh ? 'Up to date' : 'Stale'}</span>}
     />
@@ -501,7 +501,7 @@ function TestsRow() {
       ) : (
         <>
           <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 10px' }}>
-            Validation tests for the money math — mortgage amortization, tax bucketing, and
+            Validation tests for the money math — budgeting, tax bucketing, and
             spending categorization — checked against known-correct values so the numbers stay trustworthy.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -655,7 +655,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
   }
 
   async function eraseAll() {
-    if (!confirm('Erase ALL data — accounts, properties, assets, history, transactions? This cannot be undone (download a backup first).')) return;
+    if (!confirm('Erase ALL data — accounts, assets, history, transactions? This cannot be undone (download a backup first).')) return;
     setBusy('erase'); setMsg(null);
     try {
       const res = await fetch('/api/data/reset', {
@@ -727,7 +727,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
       <div style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
         <div>
           KevFin{status && ` v${status.version}`}
-          {c && ` · ${plural(c.accounts, 'account')} · ${plural(c.properties, 'property', 'properties')} · ${plural(c.importedTxns + (c.feedTxns ?? 0), 'transaction')}`}
+          {c && ` · ${plural(c.accounts, 'account')} · ${plural(c.importedTxns + (c.feedTxns ?? 0), 'transaction')}`}
         </div>
         <div>
           Free and fully local ·{' '}

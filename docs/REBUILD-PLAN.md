@@ -13,7 +13,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 |---|---|
 | 0 Baseline | Done. Build passes; tests pass (server 383, client 153). |
 | 1 SimpleFIN → Plaid | Done. Build passes; tests pass (server 388, client 153). |
-| 2–9 | Not started |
+| 2 Remove real estate | Done. Build passes; tests pass (server 347, client 143). |
+| 3–9 | Not started |
 
 Update this table at the end of each phase.
 
@@ -112,11 +113,23 @@ Update this table at the end of each phase.
    `shared/apiTypes.ts`, `keys.ts` (`OPENWEBNINJA_KEY`, `APILLOW_KEY`), the
    `properties` proposal in `ingest.ts`, and home equity in `Forecast.tsx` and
    `lib/forecastSim.ts`.
-4. Remove `MORTGAGE_RE` and the mortgage liability logic from `budget.ts`. Keep
-   the credit-card logic.
-5. Increase `CURRENT_BACKFILL_VERSION` in `historyCatchUp.ts`.
-6. Verify: `grep -riE "zillow|zhvi|mortgage|real.?estate"` finds no leftovers.
-   Build and tests pass.
+4. Count mortgage payments as normal spending. The budget used to leave them
+   out because the home model counted them through home equity and the
+   Forecast's housing outflow; without that model they must be spending, or
+   they disappear from the budget and the Forecast. Also remove the Budget
+   "Housing carry" card, the mortgage exclusion in recurring bills, and the
+   `mortgage` fields in the budget and cash-flow APIs.
+   `MORTGAGE_RE` (auto-category for mortgage payments) and the liability-account
+   logic stay; they are about categories and account types, not property
+   tracking. Phase 4 replaces the auto-categories.
+5. Do not increase `CURRENT_BACKFILL_VERSION`. Migration 8 sets each stored
+   day's `net_worth` to its `accounts_total`, which is exact; a version bump
+   would instead overwrite observed history with estimates.
+6. Verify: the remaining `real estate` mentions are the REIT asset class in the
+   allocation view, old migrations, and comments. Build and tests pass.
+   The golden budget snapshots change only by mortgage effects (spending +
+   mortgage, Mortgage row no longer excluded) and removed `housing`/`mortgage`
+   fields.
 
 ## Phase 3: macOS only
 
@@ -182,7 +195,10 @@ Update this table at the end of each phase.
    `budget_categories` becomes a cache.
 6. When a category with transactions or rules is deleted or renamed, move them
    to `fallback` and show a warning.
-7. Tests: validation, missing file, rename and delete of rules.
+7. Remove the hard-coded special cases for "Mortgage" (protected category in
+   `categories.ts` and `Budget.tsx`, `MORTGAGE_RE` auto-category). With a
+   personal file, any category can be removed.
+8. Tests: validation, missing file, rename and delete of rules.
 
 ## Phase 5: AI categorization
 

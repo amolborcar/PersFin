@@ -7,7 +7,6 @@ import path from 'path';
 
 import accountRoutes from './routes/accounts.js';
 import plaidRoutes from './routes/plaid.js';
-import propertyRoutes from './routes/properties.js';
 import assetRoutes from './routes/assets.js';
 import allocationRoutes from './routes/allocation.js';
 import budgetRoutes from './routes/budget.js';
@@ -26,8 +25,6 @@ import reportRoutes from './routes/report.js';
 import { isDailySnapshotEnabled } from './services/data.js';
 import {
   refreshAccountsAndSnapshot,
-  refreshRealEstateAndSnapshot,
-  catchUpRealEstate,
   takeSnapshot,
 } from './services/netWorth.js';
 import { catchUpHistory } from './services/historyCatchUp.js';
@@ -44,7 +41,6 @@ app.use(express.json({ limit: '15mb' })); // allow large CSV transaction uploads
 
 app.use('/api/accounts', accountRoutes);
 app.use('/api/plaid', plaidRoutes);
-app.use('/api/properties', propertyRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/allocation', allocationRoutes);
 app.use('/api/budget/rules', rulesRoutes); // before /api/budget so it is matched first
@@ -84,12 +80,6 @@ cron.schedule('0 6 * * *', async () => {
   await catchUpHistory().catch(err => console.error('[cron] history catch-up failed:', err));
 });
 
-// Real estate: refresh twice a month — 1st and 15th at 6:30 AM
-cron.schedule('30 6 1,15 * *', async () => {
-  console.log('[cron] Twice-monthly real estate refresh...');
-  await refreshRealEstateAndSnapshot();
-});
-
 // Daily midnight snapshot — records current DB state so net-worth history
 // stays continuous even on days when no account refresh runs. The toggle lives
 // in the DB (Setup → Sync) so it takes effect without a restart; DAILY_SNAPSHOT
@@ -107,8 +97,7 @@ process.on('unhandledRejection', err => console.error('[unhandledRejection]', er
 const PORT = process.env.PORT ?? 3001;
 app.listen(PORT, () => {
   console.log(`KevFin server running on http://localhost:${PORT}`);
-  // Catch up on anything a scheduled run missed while offline. Both are
-  // fire-and-forget so a slow or failing provider can't hold up serving.
-  catchUpRealEstate().catch(err => console.error('[startup] catch-up failed:', err));
+  // Catch up on history a scheduled run missed while offline. Fire-and-forget
+  // so a slow or failing provider can't hold up serving.
   catchUpHistory().catch(err => console.error('[startup] history catch-up failed:', err));
 });

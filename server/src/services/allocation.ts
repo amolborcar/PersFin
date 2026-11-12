@@ -29,7 +29,6 @@ export interface HoldingRow {
   costBasis: number | null; costBasisCoveredValue: number; costBasisComplete: boolean; costBasisSource: CostBasisSource | null;
   pct: number; assetClass: string; overridden: boolean; accounts: AccountHolding[];
 }
-export interface RealEstateLot { id: number; address: string; equity: number; excluded: boolean }
 export interface Allocation {
   total: number;
   holdings: HoldingRow[];
@@ -38,7 +37,6 @@ export interface Allocation {
   byCountry: Slice[];
   byAssetClass: Slice[];
   assetClasses: string[]; // the buckets a holding can be assigned to (for the picker)
-  realEstate: RealEstateLot[]; // homes (equity), for the include/exclude control
   // Set when some fund lacks full holdings AND we know why (no SEC contact
   // email configured, or SEC is refusing us) — the client offers a fix inline.
   lookThrough?: LookThroughIssue;
@@ -233,27 +231,13 @@ export async function getAllocation(opts: { estimate?: boolean } = {}): Promise<
     }));
   }
 
-  // --- Real estate (home equity) + manually-tracked assets, folded into the
-  // overall allocation so it reflects the whole portfolio, not just brokerage.
-  // The primary residence (or any home) can be excluded via opts. ---
-  // Exclusion is stored per-property (durable), not per-browser.
-  const realEstate: RealEstateLot[] = (db
-    .prepare('SELECT id, address, zestimate, mortgage_balance, excluded_from_allocation FROM properties ORDER BY address')
-    .all() as { id: number; address: string; zestimate: number | null; mortgage_balance: number; excluded_from_allocation: number }[])
-    .map(p => ({
-      id: p.id, address: p.address,
-      equity: Math.max(0, (p.zestimate ?? 0) - (p.mortgage_balance ?? 0)),
-      excluded: !!p.excluded_from_allocation,
-    }));
-  const includedProps = realEstate.filter(p => !p.excluded && p.equity > 0);
-
+  // --- Manually-tracked assets, folded into the overall allocation so it
+  // reflects the whole portfolio, not just brokerage. ---
   const manualAssets = (db.prepare('SELECT id, name, value FROM manual_assets').all() as { id: number; name: string; value: number }[])
     .filter(m => m.value > 0);
 
-  const extrasValue =
-    includedProps.reduce((s, p) => s + p.equity, 0) +
-    manualAssets.reduce((s, m) => s + m.value, 0);
-  // Grand total = brokerage holdings + included home equity + manual assets.
+  const extrasValue = manualAssets.reduce((s, m) => s + m.value, 0);
+  // Grand total = brokerage holdings + manual assets.
   const grandTotal = total + extrasValue;
 
   const distinctSymbols = [...new Set(rows.filter(r => r.metaSymbol && !r.isCrypto).map(r => r.metaSymbol))];
@@ -421,25 +405,6 @@ export async function getAllocation(opts: { estimate?: boolean } = {}): Promise<
     holdingRow.assetClass = primaryClass;
   }
 
-  // Properties → Real Estate (excluded homes already dropped). They show as
-  // positions (home equity) so they appear when the Real Estate class is
-  // selected; overridable via the same picker, keyed by address.
-  for (const p of includedProps) {
-    const id = holdingId('', p.address);
-    const override = overrides.get(id);
-    const cls = override ?? 'Real Estate';
-    add(assetMap, cls, p.address, p.equity);
-    // No cost basis for real estate: the listed value is equity (which also moves
-    // as the mortgage is paid down), so equity − purchase price isn't a clean
-    // gain. Left non-editable rather than show a misleading number.
-    holdings.push({
-      symbol: '', name: p.address, value: p.equity,
-      costBasis: null, costBasisCoveredValue: 0, costBasisComplete: true, costBasisSource: null,
-      pct: grandTotal ? p.equity / grandTotal : 0,
-      assetClass: cls, overridden: !!override, accounts: [],
-    });
-  }
-
   // Manual assets → classified by name (overridable via the same picker, keyed
   // by name). They appear as positions so they can be reclassified.
   for (const m of manualAssets) {
@@ -486,6 +451,5 @@ export async function getAllocation(opts: { estimate?: boolean } = {}): Promise<
     byCountry: toSlices(countryMap, total, true),
     byAssetClass: toSlices(assetMap, grandTotal),
     assetClasses: [...ASSET_CLASSES],
-    realEstate,
   };
 }

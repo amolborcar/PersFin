@@ -65,7 +65,7 @@ export function quarterMonthKeys(w: Pick<ReportWindow, 'quarter' | 'year'>): str
 // Pure snapshot math for the report's headline numbers, kept here (dependency-
 // free) so the period/YoY edge cases are unit-testable.
 
-export interface SnapshotPoint { date: string; net_worth: number; real_estate_total?: number }
+export interface SnapshotPoint { date: string; net_worth: number }
 
 // A baseline snapshot must sit within this many days of the date it stands in
 // for (period start / one year before period end), or it isn't used.

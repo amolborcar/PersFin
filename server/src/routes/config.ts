@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getKeyStatus, savePlaidKeys, saveOpenWebNinjaKey, saveApillowKey, saveSecContactEmail, KeyError } from '../services/keys.js';
+import { getKeyStatus, savePlaidKeys, saveSecContactEmail, KeyError } from '../services/keys.js';
 
 const router = Router();
 
@@ -32,32 +32,6 @@ router.post('/keys', async (req: Request, res: Response) => {
     if (e instanceof KeyError) return res.status(422).json({ error: e.message });
     console.error('[config] saving keys failed:', e);
     res.status(500).json({ error: 'Could not save the credentials.' });
-  }
-});
-
-// Set/replace the property-value provider keys. OpenWeb Ninja is tried first,
-// APILLOW is the fallback (see zillow.ts).
-router.post('/openwebninja', (req: Request, res: Response) => {
-  const key = typeof req.body?.key === 'string' ? req.body.key : '';
-  try {
-    saveOpenWebNinjaKey(key);
-    res.json(getKeyStatus());
-  } catch (e) {
-    if (e instanceof KeyError) return res.status(422).json({ error: e.message });
-    console.error('[config] saving openwebninja key failed:', e);
-    res.status(500).json({ error: 'Could not save the key.' });
-  }
-});
-
-router.post('/apillow', (req: Request, res: Response) => {
-  const key = typeof req.body?.key === 'string' ? req.body.key : '';
-  try {
-    saveApillowKey(key);
-    res.json(getKeyStatus());
-  } catch (e) {
-    if (e instanceof KeyError) return res.status(422).json({ error: e.message });
-    console.error('[config] saving apillow key failed:', e);
-    res.status(500).json({ error: 'Could not save the key.' });
   }
 });
 

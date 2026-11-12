@@ -10,11 +10,6 @@ const FIXED_CATEGORIES = new Set(['Mortgage', 'Rent', 'Gas & Electric', 'Water',
 // itemized purchases (which already surface per-merchant here).
 const SKIP_CATEGORIES = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment']);
 
-// Housing carry — mortgage payments and HOA dues — is surfaced in the Budget
-// housing-carry breakdown (interest vs principal, tax, insurance, HOA), so listing
-// it here too would double-count it. Excluded from recurring costs entirely.
-const EXCLUDED_FROM_RECURRING = new Set(['Mortgage']);
-const HOA_RE = /\bhoa\b|home ?owners?(?:'| )?\s*assoc|homeowners? association/i;
 
 // ── Flexible-recurring scope ─────────────────────────────────────────────────
 // This page exists to surface *optimizable* recurring fees — subscriptions,
@@ -440,9 +435,6 @@ async function loadContext(): Promise<RecurringContext> {
   for (const t of raw) {
     const cat = t.category; // canonical, final (already resolved against all rules)
     if (SKIP_CATEGORIES.has(cat)) continue;
-    // Mortgage payments and HOA dues live in the housing-carry breakdown, not here.
-    if (EXCLUDED_FROM_RECURRING.has(cat)) continue;
-    if (HOA_RE.test(t.payee) || HOA_RE.test(t.description ?? '')) continue;
 
     const mk = t.merchant;
     const date = t.date;

@@ -13,16 +13,6 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Persist whether a property (e.g. the primary residence) is excluded from the
-// asset-allocation view. Does not touch net worth.
-router.put('/property-exclusion', (req: Request, res: Response) => {
-  const id = Number(req.body?.id);
-  const excluded = req.body?.excluded ? 1 : 0;
-  if (!Number.isFinite(id)) return res.status(400).json({ error: 'id required' });
-  getDb().prepare('UPDATE properties SET excluded_from_allocation = ? WHERE id = ?').run(excluded, id);
-  res.json({ ok: true });
-});
-
 // Set or clear a holding's manual asset-class override. An empty/“auto”
 // assetClass removes the override and reverts to automatic classification.
 router.put('/classification', (req: Request, res: Response) => {

@@ -21,7 +21,7 @@ const REQUIRED_TABLES = ['accounts', 'net_worth_snapshots', 'meta'];
 // All user-data tables, ordered so a full wipe doesn't trip foreign-key-like
 // dependencies (there are no FKs, but this keeps the intent clear).
 const DATA_TABLES = [
-  'net_worth_snapshots', 'balance_observations', 'property_value_history', 'properties',
+  'net_worth_snapshots', 'balance_observations',
   'manual_assets', 'accounts', 'asset_class_overrides', 'cost_basis_overrides', 'imported_cost_basis',
   'plaid_items', 'provider_cache', 'transactions',
   'imported_txns', 'budget_targets', 'rules', 'txn_amount_overrides',
@@ -146,9 +146,9 @@ export function resetData(mode: ResetMode): Record<string, number> {
       for (const t of DATA_TABLES) if (present.has(t)) db.prepare(`DELETE FROM ${t}`).run();
       // Cached provider payloads hold full transaction/balance history — leaving
       // them behind would keep financial data in a "fully erased" DB. Plaid
-      // payloads live in provider_cache (wiped above); the ZHVI series and any
-      // pre-migration leftovers are still keyed in `meta`.
-      db.prepare(`DELETE FROM meta WHERE key LIKE 'plaid_txn_cache_%' OR key LIKE 'zhvi_%'`).run();
+      // payloads live in provider_cache (wiped above); any pre-migration
+      // leftovers are still keyed in `meta`.
+      db.prepare(`DELETE FROM meta WHERE key LIKE 'plaid_txn_cache_%'`).run();
     });
     wipe();
     clearPlaidCaches();
@@ -169,7 +169,6 @@ function tableCount(name: string): number {
 function countRows(): Record<string, number> {
   return {
     accounts: tableCount('accounts'),
-    properties: tableCount('properties'),
     manualAssets: tableCount('manual_assets'),
     snapshots: tableCount('net_worth_snapshots'),
     importedTxns: tableCount('imported_txns'),
@@ -243,7 +242,6 @@ export function getSystemStatus() {
     dailySnapshotEnabled: isDailySnapshotEnabled(),
     lastSync: {
       accounts: maxAcct,
-      realEstate: getMetaValue('last_real_estate_refresh'),
       snapshot: lastSnap,
     },
     counts: countRows(),

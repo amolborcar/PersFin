@@ -1,5 +1,4 @@
 import { MONTE_CARLO_RUNS } from './forecastConfig.ts';
-import { amortizeYear } from './mortgage.ts';
 
 // Pure Monte Carlo retirement projection extracted from pages/Forecast.tsx so it
 // can be unit-tested in isolation. Given a year's deterministic flows and random
@@ -110,29 +109,12 @@ export interface SimAssumptions {
   gradStartAge: number; gradYears: number; gradCostPerYear: number; gradCoverage: number;
   effTaxRate: number;
   investReturn: number; volatility: number;
-  realEstateGrowth: number;
   retireTaxRate: number;
 }
 export interface SimEvent { type: string; age: number; amount: number; untilAge?: number; everyYears?: number; isPct?: boolean; isSale?: boolean }
 // isSale (one-time events only): the amount is a one-off cash inflow (a sale /
 // windfall — e.g. a business sale) rather than a one-off cost.
 
-// Explicit real-estate model. When provided, each property's value appreciates while
-// its mortgage amortizes down (equity = value − balance), and the housing cash outflow
-// (P&I until payoff, plus tax/insurance/HOA growing at their own rates) is charged
-// each year. Omit it to keep the legacy behavior: grow `baseRE` (equity) at
-// `realEstateGrowth` with no housing outflow.
-//   sellable — this property's equity may be drawn as a last resort in retirement
-//   (downsize / reverse mortgage). Equity from non-sellable properties stays in net
-//   worth but can never cover a shortfall.
-export interface SimProperty { value: number; balance: number; ratePct: number; monthlyPI: number; sellable: boolean }
-export interface SimRealEstate {
-  properties: SimProperty[];
-  propertyTaxAnnual: number; insuranceAnnual: number; hoaAnnual: number; // today's $/yr (aggregate)
-  rentalIncomeAnnual: number;                                            // income generated, e.g. rent
-  taxGrowth: number; insuranceGrowth: number; hoaGrowth: number;          // annual growth rates
-  rentalGrowth: number;
-}
 export interface SimEarner {
   enabled?: boolean; currentAge: number; income: number; retireAge: number;
   raisePct?: number; ssEnabled?: boolean; ssClaimAge: number; ssAnnual: number;
@@ -156,7 +138,6 @@ export interface SimInput {
   earners: SimEarner[];
   pools0: Pools;
   contribByBucket: Pools;
-  baseRE: number;
   // Manual assets/liabilities carrying a fixed annual rate (fraction, e.g. 0.045).
   // Held out of the volatile investment pools and grown steadily at each entry's
   // own rate; a negative value is a liability whose balance compounds. Positive
@@ -167,8 +148,6 @@ export interface SimInput {
   collegeOn: boolean;
   gradOn: boolean;
   spendingAdjust: number;
-  realEstate?: SimRealEstate; // explicit home value + mortgage + carrying costs (see above)
-  tapHomeEquity?: boolean; // draw home equity as a last resort once liquid pools are exhausted (retirement only)
   glidePath?: boolean;     // de-risk: glide equity exposure down with age, scaling both return and volatility
   runs?: number;       // defaults to MONTE_CARLO_RUNS
   yearNow?: number;    // defaults to the current calendar year (only labels the bands)
@@ -179,17 +158,16 @@ export interface SimBand {
   age: number; year: number;
   p10: number; p50: number; band: number;
   invP10: number; invP50: number; invBand: number;
-  re: number; income: number; spending: number;
+  income: number; spending: number;
 }
 export interface SimResult { bands: SimBand[]; successPct: number }
 
 export function runForecastSim(input: SimInput): SimResult {
   const {
     A, currentAge0, infl, costPerKid, kidIndependentAge,
-    kidAges, events, earners, pools0, contribByBucket, baseRE,
+    kidAges, events, earners, pools0, contribByBucket,
     hsaLast, collegeOn, gradOn, spendingAdjust,
   } = input;
-  const tapHomeEquity = input.tapHomeEquity ?? false;
   const glidePath = input.glidePath ?? false;
   const RUNS = input.runs ?? MONTE_CARLO_RUNS;
   const yearNow = input.yearNow ?? new Date().getFullYear();
@@ -222,40 +200,12 @@ export function runForecastSim(input: SimInput): SimResult {
   // A future kid's current age in projection year i (negative until born).
   const futureKidAgeAt = (e: SimEvent, i: number) => (currentAge0 + i) - e.age;
 
-  // --- Real-estate projection (deterministic) --------------------------------
-  // When an explicit model is supplied, the home value appreciates while each
-  // mortgage amortizes down; equity = value − Σbalance. The housing cash outflow
-  // (P&I until payoff + carrying costs) is charged below as part of `net`. Without
-  // it, reYears stays null and the legacy baseRE-growth path is used.
-  const reIn = input.realEstate;
-  const reYears = reIn ? (() => {
-    let balances = reIn.properties.map(p => p.balance);
-    return Array.from({ length: years }, (_, i) => {
-      let equity = 0, sellableEquity = 0, pAndI = 0;
-      balances = balances.map((bal, pi) => {
-        const p = reIn.properties[pi];
-        const value = p.value * Math.pow(1 + A.realEstateGrowth, i + 1); // end-of-year value
-        const r = amortizeYear(bal, p.ratePct, p.monthlyPI);
-        pAndI += r.interest + r.principal; // actual cash paid (0 once paid off)
-        const eq = Math.max(0, value - r.endBalance);
-        equity += eq;
-        if (p.sellable) sellableEquity += eq; // only opted-in properties can cover shortfalls
-        return r.endBalance;
-      });
-      const carry = reIn.propertyTaxAnnual * Math.pow(1 + reIn.taxGrowth, i)
-        + reIn.insuranceAnnual * Math.pow(1 + reIn.insuranceGrowth, i)
-        + reIn.hoaAnnual * Math.pow(1 + reIn.hoaGrowth, i);
-      const rentalIncome = reIn.rentalIncomeAnnual * Math.pow(1 + reIn.rentalGrowth, i);
-      return { equity, sellableEquity, outflow: pAndI + carry, rentalIncome };
-    });
-  })() : null;
-
   // --- Manual assets/liabilities (deterministic, fixed-rate) -----------------
   // Each entry compounds at its own rate, independent of the market. We precompute
   // two end-of-year trajectories (no drawdown baked in): the net signed value
   // (assets − liabilities), which feeds net worth, and the spendable ceiling
   // (positive entries only), which a retiree can draw against. Drawdowns are
-  // tracked per-run as a cumulative tap, mirroring the real-estate model.
+  // tracked per-run as a cumulative tap.
   const manual = input.manualAssets ?? [];
   const manualNetByYear = Array.from({ length: years }, (_, i) =>
     manual.reduce((t, m) => t + m.value * Math.pow(1 + m.rate, i + 1), 0));
@@ -303,14 +253,9 @@ export function runForecastSim(input: SimInput): SimResult {
     // (lower) retirement rate rather than the working effective rate.
     const taxableIncome = Math.max(0, grossN - preN - hsaN + 0.85 * ssN);
     const tax = (anyWorking ? A.effTaxRate : A.retireTaxRate) * taxableIncome;
-    // Housing cash outflow (mortgage P&I until payoff + tax/insurance/HOA). Nominal
-    // already (P&I is fixed; carrying costs grow at their own rates), so it isn't
-    // multiplied by `f`. Mortgage P&I is safe to charge here because the budget
-    // excludes it from seeded spending.
-    const housingOutflow = reYears ? reYears[i].outflow : 0;
-    const housingIncome = reYears ? reYears[i].rentalIncome : 0; // rent, treated as cash income
-    const net = grossN + ssN + windfallN + housingIncome - tax - (preN + hsaN + rothN + c529N + taxN) - spendN - oneTimeN - housingOutflow;
-    return { f, age0, net, anyWorking, pretaxAdd: preN, employerAdd: employerN, rothAdd: rothN, hsaAdd: hsaN, c529Add: c529N, taxableAdd: taxN, collegeNom, oneTimeN, windfallN, grossN, ssN, spendN, housingOutflow, housingIncome };
+    // Housing costs (rent, mortgage payments) are part of the seeded spending.
+    const net = grossN + ssN + windfallN - tax - (preN + hsaN + rothN + c529N + taxN) - spendN - oneTimeN;
+    return { f, age0, net, anyWorking, pretaxAdd: preN, employerAdd: employerN, rothAdd: rothN, hsaAdd: hsaN, c529Add: c529N, taxableAdd: taxN, collegeNom, oneTimeN, windfallN, grossN, ssN, spendN };
   });
 
   // --- Monte Carlo over investment returns ----------------------------------
@@ -322,9 +267,7 @@ export function runForecastSim(input: SimInput): SimResult {
     // Fixed per-run seed → reproducible draws that depend only on the inputs (see runSeed).
     const rand = mulberry32(runSeed(s));
     let taxable = pools0.taxable, pretax = pools0.pretax, roth = pools0.roth, hsa = pools0.hsa, c529 = pools0.college;
-    // Legacy path grows `re` each year from baseRE; modeled path reads deterministic
-    // equity from reYears and tracks a per-run cumulative tap (last-resort drawdown).
-    let re = baseRE, tappedCum = 0, manualTapped = 0, solvent = true;
+    let manualTapped = 0, solvent = true;
     for (let i = 0; i < years; i++) {
       const d = yr[i];
       // Glide path (when off, eq = 1 → mean = investReturn, vol = volatility).
@@ -332,9 +275,6 @@ export function runForecastSim(input: SimInput): SimResult {
       const ret = (bondReturn + eq * (A.investReturn - bondReturn)) + (eq * A.volatility) * randn(rand);
       const g = 1 + ret;
       taxable *= g; pretax *= g; roth *= g; hsa *= g; c529 *= g;
-      let reEquity: number;
-      if (reYears) reEquity = Math.max(0, reYears[i].equity - tappedCum);
-      else { re *= (1 + A.realEstateGrowth); reEquity = re; }
 
       // Contributions in (each account's amount lands in its bucket). The
       // employer match rides along into pre-tax without touching `net`.
@@ -364,16 +304,6 @@ export function runForecastSim(input: SimInput): SimResult {
         if (need > 0) pretax = drawTaxed(pretax, A.retireTaxRate + penalty);
         if (need > 0) roth = drawFlat(roth);
         if (hsaLast && need > 0) hsa = drawFlat(hsa);
-        // Last resort: once every liquid account is drained, an opted-in retiree can
-        // sell/tap real-estate equity (downsize / reverse mortgage — treated as untaxed
-        // within the primary-residence exclusion) before the run is called insolvent.
-        // Per property: only the equity of properties marked sellable is available
-        // (legacy baseRE path uses the global tapHomeEquity flag instead).
-        const sellable = reYears ? Math.max(0, reYears[i].sellableEquity - tappedCum) : (tapHomeEquity ? reEquity : 0);
-        if (sellable > 0 && !d.anyWorking && need > 0) {
-          const drawn = Math.min(sellable, need); need -= drawn; reEquity -= drawn;
-          if (reYears) tappedCum += drawn; else re = reEquity; // persist the draw across years
-        }
         if (need > 1e-6) solvent = false; // ran out of money this year
       }
 
@@ -381,7 +311,7 @@ export function runForecastSim(input: SimInput): SimResult {
       // Added raw — a net-liability position legitimately drags net worth negative.
       const manualNet = manualNetByYear[i] - manualTapped;
       const inv = Math.max(0, taxable) + Math.max(0, pretax) + Math.max(0, roth) + Math.max(0, hsa) + Math.max(0, c529) + manualNet;
-      nw[i].push(inv + reEquity); invv[i].push(inv);
+      nw[i].push(inv); invv[i].push(inv);
     }
     if (solvent) successCount++;
   }
@@ -396,12 +326,8 @@ export function runForecastSim(input: SimInput): SimResult {
       age: d.age0, year: yearNow + i,
       p10, p50: pctile(sNw, 0.5), band: Math.max(0, p90 - p10),
       invP10: ip10, invP50: pctile(sInv, 0.5), invBand: Math.max(0, ip90 - ip10),
-      // Real estate grows deterministically, so it's the same across all runs.
-      re: Math.round(reYears ? reYears[i].equity : baseRE * Math.pow(1 + A.realEstateGrowth, i + 1)),
-      // Spending shown to the user includes the housing outflow so the line reflects
-      // the true cash going out (the mortgage P&I drops at payoff).
-      // Income includes one-off sale proceeds (a spike) and any rental income.
-      income: Math.round(d.grossN + d.ssN + d.windfallN + d.housingIncome), spending: Math.round(d.spendN + d.collegeNom + d.oneTimeN + d.housingOutflow),
+      // Income includes one-off sale proceeds (a spike).
+      income: Math.round(d.grossN + d.ssN + d.windfallN), spending: Math.round(d.spendN + d.collegeNom + d.oneTimeN),
     };
   });
   return { bands, successPct: Math.round(successCount / RUNS * 100) };
@@ -439,16 +365,16 @@ export function bandOnReaching(bands: SimBand[], currentAge0: number, age: numbe
 }
 
 // Modeled back-projection of the years before today, so the Forecast X-axis can
-// extend left and past life events (a home/car bought a few years ago, a kid) sit
+// extend left and past life events (a car bought a few years ago, a kid) sit
 // in context. It steps the deterministic median backward from today's known
-// balances — reversing the expected investment growth and that year's net savings,
-// and discounting real-estate equity at its growth rate. There's no Monte Carlo in
+// balances — reversing the expected investment growth and that year's net
+// savings. There's no Monte Carlo in
 // the past, so each point is a single line (band collapses to the median). Returns
 // oldest→newest for ages [startAge, currentAge0 − 1]; empty when startAge ≥ currentAge0.
 export function backcastHistory(input: SimInput, startAge: number): SimBand[] {
   const {
     A, currentAge0, infl, costPerKid, kidIndependentAge,
-    kidAges, events, earners, pools0, contribByBucket, baseRE, spendingAdjust,
+    kidAges, events, earners, pools0, contribByBucket, spendingAdjust,
   } = input;
   const yearNow = input.yearNow ?? new Date().getFullYear();
   const count = currentAge0 - startAge;
@@ -456,7 +382,6 @@ export function backcastHistory(input: SimInput, startAge: number): SimBand[] {
   // Fixed-rate manual sleeve, discounted into the past at each entry's own rate
   // (assets − liabilities). No drawdown is modeled in the back-projection.
   const manual = input.manualAssets ?? [];
-  const reIn = input.realEstate;
   const r = A.investReturn;
 
   const recurringAt = (age0: number) => events.filter(e => e.type === 'recurring' && age0 >= e.age && age0 <= (e.untilAge ?? A.endAge)).reduce((t, e) => t + e.amount, 0);
@@ -466,8 +391,8 @@ export function backcastHistory(input: SimInput, startAge: number): SimBand[] {
   const oneTimeSaleAt = (age0: number) => events.filter(e => e.type === 'oneTime' && e.isSale && e.age === age0).reduce((t, e) => t + e.amount, 0);
   const kidDrop = (i: number) => kidAges.reduce((s, k) => s + (k < kidIndependentAge && k + i >= kidIndependentAge ? costPerKid : 0), 0);
 
-  // Deterministic flow at a (past) age: income, spending, the housing outflow, and
-  // the resulting savings (income − tax − spend − one-time − housing). Mirrors the
+  // Deterministic flow at a (past) age: income, spending, and the resulting
+  // savings (income − tax − spend − one-time). Mirrors the
   // forward flow's terms, evaluated at a negative year offset.
   const flowAt = (age0: number) => {
     const i = age0 - currentAge0; // negative in the past
@@ -480,20 +405,11 @@ export function backcastHistory(input: SimInput, startAge: number): SimBand[] {
     const oneTimeN = (oneTimeAt(age0) + repeatAt(age0)) * f;
     const windfallN = oneTimeSaleAt(age0) * f;
     const tax = (anyWorking ? A.effTaxRate : A.retireTaxRate) * Math.max(0, grossN - preN - hsaN + 0.85 * ssN);
-    // Past housing: P&I is fixed nominal (assume the loan was already in place);
-    // carrying costs scale back at their growth rates.
-    const housingOutflow = reIn
-      ? reIn.properties.reduce((t, p) => t + p.monthlyPI * 12, 0)
-        + reIn.propertyTaxAnnual * Math.pow(1 + reIn.taxGrowth, i)
-        + reIn.insuranceAnnual * Math.pow(1 + reIn.insuranceGrowth, i)
-        + reIn.hoaAnnual * Math.pow(1 + reIn.hoaGrowth, i)
-      : 0;
-    const housingIncome = reIn ? reIn.rentalIncomeAnnual * Math.pow(1 + reIn.rentalGrowth, i) : 0;
     // The employer match entered investable without being cash income, so it
     // counts toward `saved` (what the year added to the pools) but is left out
     // of the displayed income line, mirroring the forward model.
-    const saved = grossN + ssN + windfallN + housingIncome - tax - spendN - oneTimeN - housingOutflow + employerN;
-    return { income: grossN + ssN + windfallN + housingIncome, spending: spendN + oneTimeN + housingOutflow, saved };
+    const saved = grossN + ssN + windfallN - tax - spendN - oneTimeN + employerN;
+    return { income: grossN + ssN + windfallN, spending: spendN + oneTimeN, saved };
   };
 
   // Step backward from today's totals. Each band carries END-of-that-year
@@ -505,14 +421,12 @@ export function backcastHistory(input: SimInput, startAge: number): SimBand[] {
   for (let j = 1; j <= count; j++) {
     const age0 = currentAge0 - j;
     const f = flowAt(age0);
-    const reEquity = Math.max(0, baseRE * Math.pow(1 + A.realEstateGrowth, age0 + 1 - currentAge0)); // discount equity into the past
     const manualPast = manual.reduce((t, m) => t + m.value * Math.pow(1 + m.rate, age0 + 1 - currentAge0), 0);
     const invPast = inv + manualPast;
     out.push({
       age: age0, year: yearNow + (age0 - currentAge0),
-      p10: invPast + reEquity, p50: invPast + reEquity, band: 0,
+      p10: invPast, p50: invPast, band: 0,
       invP10: invPast, invP50: invPast, invBand: 0,
-      re: Math.round(reEquity),
       income: Math.round(f.income), spending: Math.round(f.spending),
     });
     // The age0 year grew investments by r and added its savings; reverse both

@@ -4,26 +4,14 @@ import { useApi } from '../hooks/useApi.ts';
 import { usePersistentState, writePersistent } from '../hooks/usePersistentState.ts';
 import TopNav, { type View } from '../components/TopNav.tsx';
 import { MONTE_CARLO_RUNS } from '../lib/forecastConfig.ts';
-import { runForecastSim, backcastHistory, bandOnReaching, balanceYearsOut, flowYearsOut, deflateReal, baselineMedianAt, GLIDE_EQUITY_START, GLIDE_EQUITY_END, type SimInput, type SimRealEstate, type SimResult } from '../lib/forecastSim.ts';
+import { runForecastSim, backcastHistory, bandOnReaching, balanceYearsOut, flowYearsOut, deflateReal, baselineMedianAt, GLIDE_EQUITY_START, GLIDE_EQUITY_END, type SimInput, type SimResult } from '../lib/forecastSim.ts';
 import { fmtMoney, fmtMoneyCompact, fmtDate } from '../lib/format.ts';
-import { monthlyMortgagePayment, payoffYearsFromNow } from '../lib/mortgage.ts';
 
-interface Snapshot { date: string; accounts_total: number; real_estate_total: number; net_worth: number }
-// Properties from the Net Worth breakdown — loan terms + carrying costs drive the
-// Forecast's explicit real-estate model (value appreciates, mortgage amortizes,
-// housing outflow charged until payoff).
-interface FcProperty {
-  id: number; address: string;
-  zestimate: number | null; mortgage_balance: number;
-  mortgage_principal: number | null; mortgage_rate: number | null;
-  mortgage_start: string | null; mortgage_term_years: number | null;
-  property_tax_annual: number | null; insurance_annual: number | null; hoa_annual: number | null;
-  rental_income_annual: number | null;
-}
+interface Snapshot { date: string; accounts_total: number; net_worth: number }
 // Manual assets/liabilities from the Net Worth breakdown. A set interest_rate
 // pulls the entry out of the volatile investment pool and grows it steadily.
 interface FcManualAsset { id: number; value: number; interest_rate: number | null }
-interface Breakdown { properties: FcProperty[]; manualAssets: FcManualAsset[] }
+interface Breakdown { manualAssets: FcManualAsset[] }
 interface Projection {
   months: { month: string; spending: number; income: number }[];
   monthsAnalyzed: number;
@@ -103,10 +91,7 @@ interface Earner {
 
 interface Assumptions {
   currentAge: number; endAge: number;
-  investReturn: number; volatility: number; realEstateGrowth: number; inflation: number;
-  // Annual growth of the real-estate carrying costs (property tax / insurance / HOA)
-  // and of any rental/income the property generates.
-  propertyTaxGrowth: number; insuranceGrowth: number; hoaGrowth: number; rentalGrowth: number;
+  investReturn: number; volatility: number; inflation: number;
   annualSpending: number;
   costPerKid: number; kidIndependentAge: number;
   // taxes (today's $)
@@ -123,8 +108,7 @@ interface Assumptions {
 }
 
 const DEFAULT_ASSUMPTIONS: Assumptions = {
-  currentAge: 40, endAge: 90, investReturn: 0.07, volatility: 0.15, realEstateGrowth: 0.04, inflation: 0.03,
-  propertyTaxGrowth: 0.02, insuranceGrowth: 0.04, hoaGrowth: 0.03, rentalGrowth: 0.03,
+  currentAge: 40, endAge: 90, investReturn: 0.07, volatility: 0.15, inflation: 0.03,
   annualSpending: 70000, costPerKid: 18000, kidIndependentAge: 22,
   effTaxRate: 0.24, retireTaxRate: 0.15,
   limitGrowth: 0.02,
@@ -167,13 +151,13 @@ const COLLEGE_PRESETS: { label: string; value: number }[] = [
   { label: 'Private · all-in', value: 62000 },
 ];
 // Approx S&P 500 nominal annualized return & volatility over trailing windows,
-// with matching CPI inflation and home-price growth. These are hard-coded rounded
+// with matching CPI inflation. These are hard-coded rounded
 // figures (added mid-2026), NOT live data and with no exact as-of date — the UI
 // labels them "historical, approximate". Rough, for quick scenarios.
-const MARKET_PRESETS: { label: string; investReturn: number; volatility: number; inflation: number; realEstateGrowth: number }[] = [
-  { label: 'Trailing 5y', investReturn: 0.14, volatility: 0.18, inflation: 0.04, realEstateGrowth: 0.06 },
-  { label: 'Trailing 10y', investReturn: 0.125, volatility: 0.15, inflation: 0.03, realEstateGrowth: 0.05 },
-  { label: 'Trailing 20y', investReturn: 0.10, volatility: 0.16, inflation: 0.025, realEstateGrowth: 0.05 },
+const MARKET_PRESETS: { label: string; investReturn: number; volatility: number; inflation: number }[] = [
+  { label: 'Trailing 5y', investReturn: 0.14, volatility: 0.18, inflation: 0.04 },
+  { label: 'Trailing 10y', investReturn: 0.125, volatility: 0.15, inflation: 0.03 },
+  { label: 'Trailing 20y', investReturn: 0.10, volatility: 0.16, inflation: 0.025 },
 ];
 
 // Official IRS contribution limits by calendar year (today's $). Refreshed
@@ -571,13 +555,12 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
   const { data: breakdown, loading: breakdownLoading } = useApi<Breakdown>('/api/net-worth/breakdown');
   const latest = hist?.[0];
   // Nothing to simulate until the starting balances exist: without a net-worth
-  // snapshot (and the tax-bucket / property breakdowns that split it) the sim would
+  // snapshot (and the tax-bucket / asset breakdowns that split it) the sim would
   // run on $0 and flash a bogus "Current net worth $0" before the real data lands.
   const dataReady = !!latest && !taxLoading && !breakdownLoading;
   const baseAccounts = latest?.accounts_total ?? 0;
-  const baseRE = latest?.real_estate_total ?? 0;
-  // currentNW (and the effective, exclusion-aware bases) are derived below, once
-  // the per-asset exclusion state and the property breakdown are available.
+  // currentNW (and the effective, exclusion-aware base) is derived below, once
+  // the per-account exclusion state is available.
 
   const [tabRaw, setTab] = usePersistentState<string>('mon.fcTab', 'Net Worth');
   // The third tab was called "Success %" before it was renamed to what it plots.
@@ -652,18 +635,14 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
     setPendingImport(null);
   }, [pendingImport, kidAges, setEarners, setA, setKidAges, setImported, setPendingImport, setEarnersEdited]);
   const [accountContribs, setAccountContribs] = usePersistentState<Record<string, number>>('mon.fcAccountContribs', {}); // annual $/yr per account id
-  // Accounts / properties the user has switched off — excluded from the forecast's
-  // starting balances (and contributions). Keyed by account id / property id.
+  // Accounts the user has switched off — excluded from the forecast's starting
+  // balances (and contributions). Keyed by account id.
   const [excludedAccounts, setExcludedAccounts] = usePersistentState<Record<string, boolean>>('mon.fcExcludedAccounts', {});
-  const [excludedRE, setExcludedRE] = usePersistentState<Record<string, boolean>>('mon.fcExcludedRE', {});
   // Chart unit: "today's dollars" (default — deflated by inflation, so the numbers
   // read like real money) vs nominal "future dollars". A new key, so everyone
   // starts on today's dollars once rather than keeping the old nominal default.
   const [realDollars, setRealDollars] = usePersistentState('mon.fcTodayDollars', true);
   const [hsaLast, setHsaLast] = usePersistentState('mon.fcHsaLast', true);
-  // Per-property opt-in: this property's equity may be sold/tapped to cover late-life
-  // shortfalls (downsize / reverse mortgage). Keyed by property id.
-  const [sellableRE, setSellableRE] = usePersistentState<Record<string, boolean>>('mon.fcSellableRE', {});
   const [glidePath, setGlidePath] = usePersistentState('mon.fcGlidePath', false); // de-risk equity exposure with age
   // A pinned "baseline" snapshot of the projection. When set, the chart overlays it
   // as a dashed ghost line and shows the delta vs. now — so the effect of an edit is
@@ -742,42 +721,6 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
   const [historyYears, setHistoryYears] = usePersistentState('mon.fcHistoryYears', 0);
   const startAge = Math.max(0, currentAge0 - Math.max(0, historyYears));
 
-  // Explicit real-estate model from the user's properties (loan terms + carrying
-  // costs). Null when there are no properties, which keeps the legacy baseRE path.
-  const realEstate = useMemo<SimRealEstate | null>(() => {
-    const props = (breakdown?.properties ?? []).filter(p => !excludedRE[String(p.id)]);
-    if (!props.length) return null;
-    const properties = props.map(p => {
-      const hasTerms = p.mortgage_principal != null && p.mortgage_rate != null && !!p.mortgage_start;
-      // With loan terms the mortgage amortizes; a manual balance is held static
-      // (subtracts from equity, no paydown and no modeled payment).
-      const ratePct = hasTerms ? (p.mortgage_rate as number) : 0;
-      const monthlyPI = hasTerms ? monthlyMortgagePayment(p.mortgage_principal as number, p.mortgage_rate as number, p.mortgage_term_years ?? 30) : 0;
-      return { value: p.zestimate ?? 0, balance: p.mortgage_balance ?? 0, ratePct, monthlyPI, sellable: !!sellableRE[String(p.id)] };
-    });
-    if (properties.reduce((t, p) => t + p.value, 0) <= 0) return null;
-    const sum = (sel: (p: FcProperty) => number | null) => props.reduce((t, p) => t + (sel(p) ?? 0), 0);
-    return {
-      properties,
-      propertyTaxAnnual: sum(p => p.property_tax_annual),
-      insuranceAnnual: sum(p => p.insurance_annual),
-      hoaAnnual: sum(p => p.hoa_annual),
-      rentalIncomeAnnual: sum(p => p.rental_income_annual),
-      taxGrowth: A.propertyTaxGrowth, insuranceGrowth: A.insuranceGrowth, hoaGrowth: A.hoaGrowth, rentalGrowth: A.rentalGrowth,
-    };
-  }, [breakdown, excludedRE, sellableRE, A.propertyTaxGrowth, A.insuranceGrowth, A.hoaGrowth, A.rentalGrowth]);
-  // Latest mortgage payoff age across the included loans, for a chart marker.
-  const payoffAge = useMemo(() => {
-    const props = (breakdown?.properties ?? []).filter(p => !excludedRE[String(p.id)]);
-    let maxYrs = 0;
-    for (const p of props) {
-      if (p.mortgage_start && p.mortgage_principal != null) {
-        maxYrs = Math.max(maxYrs, payoffYearsFromNow(p.mortgage_start, p.mortgage_term_years ?? 30));
-      }
-    }
-    return maxYrs > 0 ? Math.round(currentAge0 + maxYrs) : null;
-  }, [breakdown, excludedRE, currentAge0]);
-
   // Drop any events persisted under the old schema (e.g. the retired 'retire'
   // type) so they don't render as dead chips. Runs once on mount.
   useEffect(() => {
@@ -817,10 +760,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
   // totals, so the default forecast is unchanged.
   const excludedAcctBal = (taxData?.accounts ?? []).filter(acctExcluded).reduce((t, a) => t + a.balance, 0);
   const effBaseAccounts = Math.max(0, baseAccounts - excludedAcctBal);
-  const effBaseRE = breakdown
-    ? breakdown.properties.filter(p => !excludedRE[String(p.id)]).reduce((t, p) => t + ((p.zestimate ?? 0) - (p.mortgage_balance ?? 0)), 0)
-    : baseRE;
-  const currentNW = effBaseAccounts + effBaseRE;
+  const currentNW = effBaseAccounts;
 
   // Manual assets/liabilities the user gave an explicit rate: pulled out of the
   // volatile investment pool and grown steadily at their own rate in the sim
@@ -859,10 +799,10 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
   // effect all come from the same model.
   const planInput = useMemo<SimInput>(() => ({
     A, currentAge0, infl, costPerKid, kidIndependentAge,
-    kidAges, events, earners, pools0, contribByBucket, baseRE: effBaseRE,
+    kidAges, events, earners, pools0, contribByBucket,
     hsaLast, collegeOn, gradOn, spendingAdjust: 1, glidePath,
-    realEstate: realEstate ?? undefined, manualAssets: manualRated, runs: RUNS,
-  }), [A, currentAge0, infl, costPerKid, kidIndependentAge, kidAges, events, earners, pools0, contribByBucket, effBaseRE, hsaLast, collegeOn, gradOn, glidePath, realEstate, manualRated]);
+    manualAssets: manualRated, runs: RUNS,
+  }), [A, currentAge0, infl, costPerKid, kidIndependentAge, kidAges, events, earners, pools0, contribByBucket, hsaLast, collegeOn, gradOn, glidePath, manualRated]);
   // Apply lever overrides: retirement age (earner 0), a spending multiplier,
   // extra yearly saving (into the taxable pool, while working) and the return.
   const withLevers = useCallback((l: Levers, spendAdj: number): SimInput => ({
@@ -940,7 +880,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
   // "Today's dollars" view: deflate a nominal value at `age` back to present
   // purchasing power. The identity when realDollars is off (factor = 1). Used for
   // both the chart series and the headline figures so they stay in sync.
-  // Balances (net worth, investable, real-estate equity, baseline) are END-of-year
+  // Balances (net worth, investable, baseline) are END-of-year
   // values: the band at age X is (X − currentAge0 + 1) years out. Income/spending are
   // the year's flows, priced at the start of the year, so they are one year less out.
   const deflYears = (v: number, yearsOut: number) => (realDollars ? deflateReal(v, yearsOut, infl) : v);
@@ -1236,9 +1176,6 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
 
   // Derived figures for the grouped controls and the chart labels.
   const placeholders = !earnersEdited && earners[0]?.currentAge === DEFAULT_EARNERS[0].currentAge;
-  const anySellable = !!realEstate?.properties.some(p => p.sellable);
-  // A "failing" plan can still own a valuable home whose equity isn't counted.
-  const homeEquityIdle = sim.successPct < 100 && effBaseRE > 0 && !anySellable;
   const totalBal = pools0.taxable + pools0.pretax + pools0.roth + pools0.hsa + pools0.college;
   const totalContribAnnual = contribByBucket.taxable + contribByBucket.pretax + contribByBucket.roth + contribByBucket.hsa + contribByBucket.college;
   const hasAccounts = !!taxData && taxData.accounts.length > 0;
@@ -1276,7 +1213,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px' }}>Forecast</h1>
         <InfoTip width={320} text={
-          'How this forecast works. Your starting point is your latest tracked net worth — investable accounts (sorted into tax buckets: taxable, pre-tax, Roth, HSA, 529) plus real-estate equity. Income and spending are seeded from your budget history; document imports (e.g. a tax return) can fill income, filing status, dependents, and your effective tax rate. Real estate is modeled explicitly: each home appreciates while its mortgage amortizes, and its housing cost (mortgage P&I until payoff, plus property tax/insurance/HOA, each growing at its own rate) is charged every year. It then runs a Monte Carlo simulation — hundreds of randomized market paths — and charts the median outcome and its range, shown in today’s or future dollars.'
+          'How this forecast works. Your starting point is your latest tracked net worth — investable accounts, sorted into tax buckets: taxable, pre-tax, Roth, HSA, 529. Income and spending are seeded from your budget history (housing costs such as rent or mortgage payments are part of that spending); document imports (e.g. a tax return) can fill income, filing status, dependents, and your effective tax rate. It then runs a Monte Carlo simulation — hundreds of randomized market paths — and charts the median outcome and its range, shown in today’s or future dollars.'
         } />
         <span style={{ color: 'var(--muted)', fontSize: 13.5 }}>{RUNS} simulated market paths · drag life events on the chart to move them, click to edit</span>
         {/* Reset is destructive, so it lives in a menu rather than beside the title. */}
@@ -1315,7 +1252,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
         <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <Stat size={44} label={`chance your money lasts to ${A.endAge}`} value={`${sim.successPct}%`} color={successColor(sim.successPct)}
             tag={<span style={pill(successColor(sim.successPct), successTint(sim.successPct))}>{successStatus(sim.successPct)}</span>}
-            detail={<p style={{ margin: 0 }}>Share of {RUNS} simulated futures where your money never runs out before age {A.endAge}. Real-estate equity isn’t counted unless you mark a property “Sell” under Home. Higher is safer — aim for 90%+.</p>} />
+            detail={<p style={{ margin: 0 }}>Share of {RUNS} simulated futures where your money never runs out before age {A.endAge}. Higher is safer — aim for 90%+.</p>} />
           <Stat size={28} label={`At retirement · age ${retireAge0}`} value={money(deflYears(retireNW, retireYearsOut))}
             sub={`likely ${moneyM(deflYears(retireLo, retireYearsOut))} – ${moneyM(deflYears(retireHi, retireYearsOut))}`} detail={(() => {
             const yrs = retireAge0 - currentAge0;
@@ -1332,14 +1269,11 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
           })()} />
           <Stat size={20} label="Today" value={money(currentNW)} sub={latest ? `as of ${fmtDate(latest.date)}` : undefined} detail={
             <>
-              <p style={{ margin: 0 }}>Your latest tracked total — investable accounts plus real-estate equity (home value minus mortgage).</p>
+              <p style={{ margin: 0 }}>Your latest tracked total of accounts and manual assets.</p>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
                 <span>Investable accounts</span><span style={{ fontWeight: 600, color: 'var(--text)' }}>{money(effBaseAccounts)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-                <span>Real-estate equity</span><span style={{ fontWeight: 600, color: 'var(--text)' }}>{money(effBaseRE)}</span>
-              </div>
-              {(excludedAcctBal > 0 || (effBaseRE !== baseRE)) && (
+              {excludedAcctBal > 0 && (
                 <p style={{ margin: '8px 0 0', fontSize: 11, opacity: 0.7 }}>Excludes assets you've switched off.</p>
               )}
             </>
@@ -1458,9 +1392,6 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
                 {/* "Today" divider between the modeled past and the Monte Carlo future. */}
                 {historyYears > 0 && <ReferenceLine x={currentAge0} stroke="var(--muted)" strokeWidth={1.5}
                   label={{ value: 'Today', position: 'insideTopRight', fontSize: 10, fill: 'var(--muted)' }} />}
-                {/* Mortgage payoff — housing outflow drops here. */}
-                {payoffAge != null && payoffAge <= A.endAge && <ReferenceLine x={payoffAge} stroke="var(--teal)" strokeDasharray="3 3"
-                  label={markLabel(`Paid off · ${payoffAge}`, 'var(--teal)', retireMarks.length + ssMarks.length, 'left')} />}
                 {tab === 'Net Worth' && <>
                   <Area dataKey="p10" stackId="nw" stroke="none" fill="transparent" name=" " legendType="none" />
                   <Area dataKey="band" stackId="nw" stroke="none" fill="url(#gBand)" name="Likely range (10th–90th pct)" />
@@ -1988,57 +1919,6 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
           )}
         </Group>
 
-        {/* — Home — */}
-        {breakdown && breakdown.properties.length > 0 && (
-          <Group open={groupOpen('home')} onToggle={() => toggleGroup('home')} title="Home"
-            summary={`${moneyM(effBaseRE)} equity · ${anySellable ? 'can fund retirement' : 'not used for retirement'}`}
-            summaryColor={homeEquityIdle ? 'var(--amber)' : undefined}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-              <span style={{ ...subHead, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                Properties
-                <InfoTip width={300} text="Each property grows as its own asset: the value appreciates and the mortgage amortizes. Its housing cost (P&I until payoff, plus tax/insurance/HOA) is charged every year, on top of Annual spending — lower that if your tracked spending already includes these. Equity only counts toward retirement solvency for a property marked “Sell” (downsize or reverse mortgage)." />
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{money(effBaseRE)} equity</span>
-            </div>
-              {breakdown.properties.map(p => {
-                const off = !!excludedRE[String(p.id)];
-                const sell = !!sellableRE[String(p.id)];
-                const eq = (p.zestimate ?? 0) - (p.mortgage_balance ?? 0);
-                return (
-                  <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto auto', gap: 10, alignItems: 'center', padding: '3px 0 3px 10px', fontSize: 12, opacity: off ? 0.4 : 1 }}>
-                    <input type="checkbox" checked={!off} title={off ? 'Excluded — click to include in the forecast' : 'Included — click to exclude from the forecast'}
-                      onChange={() => setExcludedRE(prev => { const c = { ...prev }; if (off) delete c[String(p.id)]; else c[String(p.id)] = true; return c; })}
-                      style={{ width: 'auto', justifySelf: 'center' }} />
-                    <span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.3, textDecoration: off ? 'line-through' : 'none' }} title={p.address}>{p.address}</span>
-                    <span style={{ textAlign: 'right', color: 'var(--muted)' }}>{money(eq)}</span>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, whiteSpace: 'nowrap', cursor: off ? 'default' : 'pointer', color: sell ? 'var(--green)' : 'var(--muted)' }}
-                      title="Sell/draw this property's equity as a last resort to cover retirement shortfalls (downsize / reverse mortgage)">
-                      <input type="checkbox" disabled={off} checked={sell}
-                        onChange={() => setSellableRE(prev => { const c = { ...prev }; if (c[String(p.id)]) delete c[String(p.id)]; else c[String(p.id)] = true; return c; })}
-                        style={{ width: 'auto' }} />
-                      💵 Sell
-                    </label>
-                  </div>
-                );
-              })}
-            {homeEquityIdle && (
-              <p style={{ fontSize: 12, color: 'var(--text)', background: 'rgba(245,158,11,0.08)', border: '1px solid var(--amber)', borderRadius: 8, padding: '7px 10px', margin: '8px 0 0' }}>
-                Your home equity ({money(effBaseRE)}) isn’t counted toward solvency, so a projection can “fail” while you still own a valuable home. Tick <strong>“💵 Sell”</strong> to let a property’s equity cover late-life shortfalls.
-              </p>
-            )}
-            <div style={{ borderTop: '1px solid var(--border)', marginTop: 12, paddingTop: 8 }}>
-              <span style={subHead}>Growth rates</span>
-              {numRow('Home value growth %', 'realEstateGrowth', 0.5, 100, '', '%')}
-              {realEstate && (<>
-                {numRow('Property tax growth %', 'propertyTaxGrowth', 0.5, 100, '', '%')}
-                {numRow('Insurance growth %', 'insuranceGrowth', 0.5, 100, '', '%')}
-                {numRow('HOA growth %', 'hoaGrowth', 0.5, 100, '', '%')}
-                {realEstate.rentalIncomeAnnual > 0 && numRow('Rental income growth %', 'rentalGrowth', 0.5, 100, '', '%')}
-              </>)}
-            </div>
-          </Group>
-        )}
-
         {/* — Family — */}
         <Group open={groupOpen('family')} onToggle={() => toggleGroup('family')} title="Family"
           summary={`${kidAges.length ? `${kidAges.length} kid${kidAges.length === 1 ? '' : 's'}` : 'No kids'}${futureKids.length ? ` · ${futureKids.length} planned` : ''} · college ${collegeOn ? 'on' : 'off'}`}>
@@ -2197,8 +2077,8 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '10px 0 6px' }}>
             {MARKET_PRESETS.map(p => (
               <button key={p.label} className="btn-ghost" style={{ fontSize: 11 }}
-                title={`S&P 500 ${p.label.toLowerCase()} (historical, approximate): ${Math.round(p.investReturn * 1000) / 10}% return, ${Math.round(p.volatility * 100)}% volatility, ${Math.round(p.inflation * 1000) / 10}% inflation, ${Math.round(p.realEstateGrowth * 1000) / 10}% home-price growth`}
-                onClick={() => setA(prev => ({ ...DEFAULT_ASSUMPTIONS, ...prev, investReturn: p.investReturn, volatility: p.volatility, inflation: p.inflation, realEstateGrowth: p.realEstateGrowth }))}>
+                title={`S&P 500 ${p.label.toLowerCase()} (historical, approximate): ${Math.round(p.investReturn * 1000) / 10}% return, ${Math.round(p.volatility * 100)}% volatility, ${Math.round(p.inflation * 1000) / 10}% inflation`}
+                onClick={() => setA(prev => ({ ...DEFAULT_ASSUMPTIONS, ...prev, investReturn: p.investReturn, volatility: p.volatility, inflation: p.inflation }))}>
                 {p.label} · {Math.round(p.investReturn * 1000) / 10}%
               </button>
             ))}
@@ -2206,7 +2086,6 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
           {numRow('Investment return %', 'investReturn', 0.5, 100, '', '%')}
           {numRow('Return volatility %', 'volatility', 1, 100, '', '%')}
           {numRow('Inflation %', 'inflation', 0.5, 100, '', '%')}
-          {!(breakdown && breakdown.properties.length > 0) && numRow('Real estate growth %', 'realEstateGrowth', 0.5, 100, '', '%')}
           <label style={{ ...rowStyle, fontSize: 13, color: 'var(--muted)', cursor: 'pointer' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               📉 Equity glide path (de-risk with age)
@@ -2256,7 +2135,6 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
             { key: 'income', label: 'Income', fmt: b => money(flow(b.income, b)), color: 'var(--green)' },
             { key: 'spending', label: 'Spending', fmt: b => money(flow(b.spending, b)), color: 'var(--red)' },
             { key: 'invP50', label: 'Investable (median)', fmt: b => money(bal(b.invP50, b)) },
-            { key: 're', label: 'Real estate', fmt: b => money(bal(b.re, b)) },
             { key: 'p50', label: 'Net worth (median)', fmt: b => money(bal(b.p50, b)) },
             { key: 'range', label: 'Net worth 10th–90th pct', fmt: b => `${moneyM(bal(b.p10, b))} – ${moneyM(bal(b.p10 + b.band, b))}` },
           ];
@@ -2284,7 +2162,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
                 </tbody>
               </table>
               <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
-                The deterministic flows (income, spending) and the Monte Carlo percentiles ({RUNS} runs) per year, sampled every {tableInterval} year{tableInterval === 1 ? '' : 's'}. The highlighted row marks your retirement age ({retireAge0}). All figures are {unitLabel}, following the Future $ / Today’s $ toggle above the chart; spending includes the housing outflow (mortgage P&amp;I until payoff, plus tax/insurance/HOA).
+                The deterministic flows (income, spending) and the Monte Carlo percentiles ({RUNS} runs) per year, sampled every {tableInterval} year{tableInterval === 1 ? '' : 's'}. The highlighted row marks your retirement age ({retireAge0}). All figures are {unitLabel}, following the Future $ / Today’s $ toggle above the chart.
               </p>
             </div>
           );

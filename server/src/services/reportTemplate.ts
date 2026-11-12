@@ -113,7 +113,6 @@ function waterfallBlock(m: ReportModel): string {
     startLabel: m.startLabel, endLabel: m.endLabel, start: a.start, end: a.end,
     steps: [
       { label: 'Saved', amount: a.saved, title: 'Income minus spending (including mortgage payments) for the quarter.' },
-      { label: 'Home equity', sublabel: 'value + mortgage paydown', amount: a.home, title: 'Change in property value less mortgage balance between the two snapshots.' },
       { label: 'Market & other', amount: a.market, title: 'The remainder: investment returns, untracked transfers and rounding.' },
     ],
   };
@@ -123,7 +122,7 @@ function waterfallBlock(m: ReportModel): string {
   const sub = `From ${money(a.start)} on ${esc(m.startLabel)} to ${money(a.end)} on ${esc(m.endLabel)}` +
     (w.truncated ? ` · axis starts at ${fmtK(w.axisFloor)}` : '');
   return `<section>${head}<p class="sub">${sub}</p><figure class="fig">${w.svg}${wCompact.svg}</figure>` +
-    `<p class="sub small">“Market &amp; other” is the remainder after savings and home equity: investment returns, untracked transfers and rounding.</p></section>`;
+    `<p class="sub small">“Market &amp; other” is the remainder after savings: investment returns, debt paydown, untracked transfers and rounding.</p></section>`;
 }
 
 function accountsTable(m: ReportModel): string {
@@ -152,13 +151,13 @@ function allocationBlock(m: ReportModel): string {
 }
 
 // What the donut's total actually measures (getAllocation().total): brokerage and
-// retirement holdings + home equity not excluded from allocation + manual assets.
+// retirement holdings + manual assets.
 // Bank cash and credit balances are not part of it, so it sits below net worth.
 function allocationNote(m: ReportModel): string {
   if (m.allocationStatus !== 'ok' || !m.allocation.length) return '';
   const of = m.allocationTotal != null ? ` (${fmtK(m.allocationTotal)} in all)` : '';
-  return `<p class="sub">The allocation chart covers investment accounts, home equity and manual assets${of}. ` +
-    `Bank cash, credit cards and any property excluded from allocation are not counted, so it is lower than net worth above.</p>`;
+  return `<p class="sub">The allocation chart covers investment accounts and manual assets${of}. ` +
+    `Bank cash and credit cards are not counted, so it is lower than net worth above.</p>`;
 }
 
 function taxBlock(m: ReportModel): string {
@@ -437,7 +436,7 @@ export function renderReportHtml(m: ReportModel): string {
     <div>Generated ${esc(m.generatedAt)} · KevFin, self-hosted · rendered locally, your data never left this machine.${m.asOf ? ` Net worth and cash flow as of ${esc(m.asOf)}; accounts, allocation and tax sections are current holdings.` : ''}</div>
     <p class="disc">This statement is generated from your own data and is for personal information only.
     It is not investment, tax, or legal advice. Figures are point-in-time estimates drawn from connected
-    accounts, look-through holdings, and property valuations, and may differ from official statements.</p>
+    accounts and look-through holdings, and may differ from official statements.</p>
   </footer>
 
 </div></div></body></html>`;

@@ -1,15 +1,16 @@
 import type Database from 'better-sqlite3';
 
 // Append-only per-asset balance history. Every sync and daily snapshot records
-// what each account/property/manual asset was actually worth on a given day
+// what each account/manual asset was actually worth on a given day
 // ("real" observations); the backfill fills dates before real data exists with
 // reconstructed values ("estimated"). Real always wins: an estimate can never
 // overwrite a real observation, while re-running the backfill refreshes stale
 // estimates in place. net_worth_snapshots stays the (derived) chart source for
 // now — this table is the durable per-asset record that outlives it.
 //
-// account_id is accounts.id for provider accounts, 'property:<id>' for a
-// property's equity (value − mortgage), 'manual:<id>' for manual assets.
+// account_id is accounts.id for provider accounts and 'manual:<id>' for manual
+// assets. ('property:<id>' rows from the removed real-estate feature are
+// deleted by migration 8.)
 
 type Db = Database.Database;
 

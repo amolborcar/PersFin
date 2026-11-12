@@ -34,7 +34,7 @@ interface Txn {
 // forecast for next month derived from the trailing averages. The in-progress month
 // is hatched and labelled "(to date)" so a partial month doesn't read as a complete
 // one. Page back with ← / →. Click a month to list its transactions below (defaults
-// to the most recent month). Spending here excludes mortgage payments.
+// to the most recent month).
 const GREEN = 'var(--green)', RED = 'var(--red)', NET = 'var(--text)', MUTED = 'var(--muted)';
 const WINDOW = 10;        // historical months shown at once
 const STEP = 6;           // months paged per arrow click
@@ -102,7 +102,7 @@ export default function CashFlowTrend({ privacy, version = 0, cats, groups, onRe
         <div style={{ flex: '1 1 240px', minWidth: 0 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600 }}>Monthly cash flow</h2>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>
-            Income vs. spending each month (spending excludes mortgage payments), with net flow and a forecast for next month.
+            Income vs. spending each month, with net flow and a forecast for next month.
             {data && data.monthsAnalyzed > 0 && <> Forecast = average of the last {data.monthsAnalyzed} complete month{data.monthsAnalyzed === 1 ? '' : 's'}.</>}
             {' '}Click a month to list its transactions below.
           </p>
@@ -210,11 +210,8 @@ function MonthTransactions({ month, privacy, version, money, moneyCents, partial
 } & EditProps) {
   const { data, loading } = useApi<{ transactions: Txn[] }>(`/api/budget/transactions?range=${month}`, [month, version]);
   const txns = data?.transactions ?? [];
-  // Same definition as the chart above: Mortgage payments are listed but not counted in Out.
-  const counted = txns.filter(t => t.category !== 'Mortgage');
-  const mortgageOut = txns.filter(t => t.category === 'Mortgage').reduce((s, t) => s + Math.abs(t.amount), 0);
-  const inflow = counted.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-  const outflow = counted.filter(t => t.amount < 0).reduce((s, t) => s - t.amount, 0);
+  const inflow = txns.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const outflow = txns.filter(t => t.amount < 0).reduce((s, t) => s - t.amount, 0);
   const editable = !!(onRecategorize && cats);
 
   return (
@@ -224,7 +221,7 @@ function MonthTransactions({ month, privacy, version, money, moneyCents, partial
           {ymLong(month)}{partial ? ' (to date)' : ''} transactions
           <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {loading ? '…' : `${txns.length}`}</span>
         </h3>
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>In {money(inflow)} · Out {money(outflow)}{mortgageOut > 0 && ` · excludes ${money(mortgageOut)} mortgage`}</span>
+        <span style={{ color: 'var(--muted)', fontSize: 12 }}>In {money(inflow)} · Out {money(outflow)}</span>
       </div>
       {!loading && txns.length === 0 && <p style={{ color: 'var(--muted)', fontSize: 13, padding: '6px 0' }}>No transactions this month.</p>}
       {txns.length > 0 && (

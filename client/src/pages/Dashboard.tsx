@@ -1,32 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import NetWorthChart from '../components/NetWorthChart.tsx';
 import ConnectPlaid from '../components/ConnectPlaid.tsx';
-import AddProperty from '../components/AddProperty.tsx';
-import ZillowKey from '../components/ZillowKey.tsx';
 import TopNav, { type View } from '../components/TopNav.tsx';
 import { useApi } from '../hooks/useApi.ts';
 import { usePersistentState } from '../hooks/usePersistentState.ts';
-import { remainingMortgageBalance } from '../lib/mortgage.ts';
 import { parseNum, parseNumOrNull } from '../lib/parseNum.ts';
 import { RANGES, rangeCutoff, type RangeKey } from '../lib/dateRange.ts';
 import { sinceLabel, visitTitle } from '../lib/sinceLabel.ts';
 import { fmtMoney, fmtDate, fmtMonth } from '../lib/format.ts';
 import { relTime, newestTimestamp } from '../lib/relTime.ts';
 import type {
-  Snapshot, Account, ManualAsset, Property, PlaidItem, AccountCategory,
+  Snapshot, Account, ManualAsset, PlaidItem, AccountCategory,
 } from '@shared/apiTypes';
 
-// The dashboard page: net-worth KPIs and history chart, connected accounts,
-// real estate and manual assets. Extracted from App.tsx, which is now just the
+// The dashboard page: net-worth KPIs and history chart, connected accounts and
+// manual assets. Extracted from App.tsx, which is now just the
 // shell (routes, privacy state, the assistant). Response types come from the
 // shared API contract (@shared/apiTypes) instead of hand-copied interfaces.
 
-// The three headline figures, snapshotted so the dashboard can show how each has
+// The headline figures, snapshotted so the dashboard can show how each has
 // moved since the user's previous visit (persisted under `mon.lastSession`).
 interface SessionSnapshot {
   net_worth: number;
   accounts_total: number;
-  real_estate_total: number;
   // When this visit began (ISO). Optional: snapshots stored before it was added
   // still load, and just get the undated "since last visit" label.
   at?: string;
@@ -67,7 +63,7 @@ function EditableField({ label, initialValue, color, onSave }: {
   const [value, setValue] = useState(String(initialValue ?? ''));
 
   async function save() {
-    // Blank/unparseable input cancels — saving it as 0 would zero out a property
+    // Blank/unparseable input cancels — saving it as 0 would zero out an asset
     // value (or any other figure) just because the field was cleared.
     const v = parseNumOrNull(value);
     if (v != null) await onSave(v);
@@ -104,364 +100,8 @@ function EditableField({ label, initialValue, color, onSave }: {
   );
 }
 
-// Live preview of the remaining balance as the user types loan terms. The
-// amortization math lives in ./lib/mortgage.ts (shared with the Forecast).
-const estimateMortgageBalance = remainingMortgageBalance;
-
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n !== 1 ? 's' : ''}`;
-}
-
-function dateLabel(iso: string | null): string {
-  return iso ? fmtDate(iso) : '';
-}
-
-function PropertyRow({ property: p, onRemove, onUpdate }: {
-  property: Property;
-  onRemove: (id: number) => void;
-  onUpdate: () => void;
-}) {
-  async function patch(body: object) {
-    await fetch(`/api/properties/${p.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    onUpdate();
-  }
-
-  const hasTerms = p.mortgage_principal != null && p.mortgage_rate != null && !!p.mortgage_start;
-  // No value yet → no equity to show (the mortgage still counts in the Home equity
-  // card, as the server's snapshot does) rather than a misleading negative figure.
-  const equity = p.zestimate == null ? null : p.zestimate - (p.mortgage_balance ?? 0);
-
-  const [editing, setEditing] = useState(false);
-  const [principal, setPrincipal] = useState(p.mortgage_principal != null ? String(p.mortgage_principal) : '');
-  const [rate, setRate] = useState(p.mortgage_rate != null ? String(p.mortgage_rate) : '');
-  const [start, setStart] = useState(p.mortgage_start ?? ''); // YYYY-MM-DD for the date input
-  const [term, setTerm] = useState(p.mortgage_term_years != null ? String(p.mortgage_term_years) : '30');
-
-  async function saveTerms() {
-    const pr = parseNum(principal);
-    if (!pr || !start) return; // need at least a principal and a start month
-    await patch({
-      mortgage_principal: pr,
-      mortgage_rate: parseNum(rate),
-      mortgage_start: start,
-      mortgage_term_years: Math.round(parseNum(term)) || 30,
-    });
-    setEditing(false);
-  }
-  async function clearTerms() {
-    await patch({ mortgage_principal: null, mortgage_rate: null, mortgage_start: null, mortgage_term_years: null });
-    setEditing(false);
-  }
-
-  const preview = estimateMortgageBalance(parseNum(principal), parseNum(rate), start, Math.round(parseNum(term)) || 30);
-
-  const fieldLabel = { fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: 0.3 };
-  const fieldInput = { padding: '5px 8px', fontSize: 13 };
-
-  return (
-    <div style={{
-      padding: 14, marginBottom: 12, borderRadius: 10,
-      border: '1px solid var(--border)', background: 'var(--bg)',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
-        <p style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3 }}>{p.address}</p>
-        <button
-          className="btn-ghost"
-          style={{ fontSize: 11, padding: '2px 8px', color: 'var(--red)', flexShrink: 0 }}
-          onClick={() => onRemove(p.id)}
-        >Remove</button>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <EditableField label="Value" initialValue={p.zestimate} color="var(--green)"
-          onSave={v => patch({ value: v })} />
-
-        {/* Mortgage: read-only when amortized from loan terms, else manually editable */}
-        {hasTerms ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-            <span style={{ color: 'var(--muted)', marginRight: 8 }}>
-              Mortgage <span style={{ fontSize: 10, opacity: 0.6 }}>est.</span>
-            </span>
-            <span style={{ fontWeight: 600, color: 'var(--red)' }}>{fmt(p.mortgage_balance)}</span>
-          </div>
-        ) : (
-          <EditableField label="Mortgage" initialValue={p.mortgage_balance} color="var(--red)"
-            onSave={v => patch({ mortgage_balance: v })} />
-        )}
-
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
-          marginTop: 2, paddingTop: 8, borderTop: '1px solid var(--border)',
-        }}>
-          <span style={{ color: 'var(--muted)', fontWeight: 600 }}>Equity</span>
-          <span
-            title={equity == null ? 'Add a value to see equity (the mortgage is still counted in Home equity above)' : undefined}
-            style={{ fontWeight: 700, fontSize: 15, color: equity != null && equity < 0 ? 'var(--red)' : 'var(--accent)' }}
-          >{fmt(equity)}</span>
-        </div>
-      </div>
-
-      {/* Carrying costs & income (annual). Informational here; feed the Budget housing
-          breakdown and the Forecast's housing cash flow. */}
-      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3 }}>Carrying costs / yr</span>
-        <EditableField label="Property tax" initialValue={p.property_tax_annual} color="var(--text)"
-          onSave={v => patch({ property_tax_annual: v })} />
-        <EditableField label="Insurance" initialValue={p.insurance_annual} color="var(--text)"
-          onSave={v => patch({ insurance_annual: v })} />
-        <EditableField label="HOA" initialValue={p.hoa_annual} color="var(--text)"
-          onSave={v => patch({ hoa_annual: v })} />
-        <EditableField label="Rental / income" initialValue={p.rental_income_annual} color="var(--green)"
-          onSave={v => patch({ rental_income_annual: v })} />
-      </div>
-
-      {/* Loan-terms estimator */}
-      <div style={{ marginTop: 10 }}>
-        {!editing && (
-          <div style={{ display: 'flex', justifyContent: hasTerms ? 'space-between' : 'flex-end', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--muted)' }}>
-            {hasTerms && (
-              <span>{fmt(p.mortgage_principal)} at {p.mortgage_rate}% · {p.mortgage_term_years ?? 30}-yr from {dateLabel(p.mortgage_start)}</span>
-            )}
-            <button onClick={() => setEditing(true)} aria-label={`Edit ${p.address}`} style={{ ...linkBtn, flexShrink: 0 }}>edit</button>
-          </div>
-        )}
-        {editing && (<>
-          <div style={{ marginTop: 6, padding: 10, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8 }}>
-            <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
-              Estimate the remaining balance from a standard amortization schedule.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={fieldLabel}>Original loan</span>
-                <input value={principal} onChange={e => setPrincipal(e.target.value)} placeholder="500000" style={fieldInput} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={fieldLabel}>Interest rate %</span>
-                <input value={rate} onChange={e => setRate(e.target.value)} placeholder="6.5" style={fieldInput} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={fieldLabel}>Start date</span>
-                <input type="date" value={start} onChange={e => setStart(e.target.value)} style={fieldInput} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={fieldLabel}>Term (years)</span>
-                <input value={term} onChange={e => setTerm(e.target.value)} placeholder="30" style={fieldInput} />
-              </label>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                Balance today: <strong style={{ color: 'var(--text)' }}>{fmt(preview)}</strong>
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {hasTerms && (
-                  <button className="btn-ghost" onClick={clearTerms} style={{ fontSize: 11, padding: '4px 8px', color: 'var(--red)' }}>Clear</button>
-                )}
-                <button className="btn-ghost" onClick={() => setEditing(false)} style={{ fontSize: 11, padding: '4px 8px' }}>Cancel</button>
-                <button className="btn-primary" onClick={saveTerms} style={{ fontSize: 11, padding: '4px 8px' }}>Save</button>
-              </div>
-            </div>
-          </div>
-          {/* Value history is an editing tool (paste Zillow history), so it only appears here. */}
-          <ValueHistory propertyId={p.id} address={p.address} onChanged={onUpdate} />
-        </>)}
-      </div>
-    </div>
-  );
-}
-
-const MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
-};
-
-// Parse the Zestimate table copied from Zillow's "Table view" into dated points.
-// Zillow rows look like "Jul 2026    $1,035,800" (tab- or space-separated); we
-// also accept "2026-07"/"07/2026" dates and "$1.04M"/"$980K" values. Each row
-// needs both a recognisable month and a $ amount, so header/label lines drop out.
-function parseZillowTable(text: string): { date: string; value: number }[] {
-  const out: { date: string; value: number }[] = [];
-  const seen = new Set<string>();
-  for (const line of text.split(/\r?\n/)) {
-    let date: string | null = null;
-    let m: RegExpMatchArray | null;
-    if ((m = line.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b/i))) {
-      date = `${m[2]}-${String(MONTHS[m[1].slice(0, 3).toLowerCase()]).padStart(2, '0')}-01`;
-    } else if ((m = line.match(/\b(\d{4})-(\d{2})\b/))) {
-      date = `${m[1]}-${m[2]}-01`;
-    } else if ((m = line.match(/\b(\d{1,2})\/(\d{4})\b/))) {
-      date = `${m[2]}-${String(m[1]).padStart(2, '0')}-01`;
-    }
-    if (!date || seen.has(date)) continue;
-
-    // Value always carries a "$" on Zillow, so requiring it avoids grabbing the year.
-    let value: number | null = null;
-    let v: RegExpMatchArray | null;
-    if ((v = line.match(/\$\s*([\d.]+)\s*([MmKk])\b/))) {
-      value = Math.round(parseFloat(v[1]) * (v[2].toLowerCase() === 'm' ? 1e6 : 1e3));
-    } else if ((v = line.match(/\$\s*([\d,]+)/))) {
-      value = parseInt(v[1].replace(/,/g, ''), 10);
-    }
-    if (value == null || !isFinite(value) || value <= 0) continue;
-
-    seen.add(date);
-    out.push({ date, value });
-  }
-  return out.sort((a, b) => a.date.localeCompare(b.date));
-}
-
-// Per-property Zestimate history. A home's own Zestimate history is more accurate
-// than KevFin's default ZIP-level ZHVI curve, so we let the user paste Zillow's
-// table (or add points by hand); the backend then rebuilds the net-worth trend
-// from these points instead of ZHVI.
-function ValueHistory({ propertyId, address, onChanged }: {
-  propertyId: number; address: string; onChanged: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [points, setPoints] = useState<{ date: string; value: number }[]>([]);
-  const [date, setDate] = useState('');
-  const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [manualOpen, setManualOpen] = useState(false);
-  const [pasteText, setPasteText] = useState('');
-
-  // A Zillow search that resolves to this property's page, where the "Home value"
-  // (Zestimate) history chart lives — read the dated values off it and enter them here.
-  const zillowUrl = `https://www.zillow.com/homes/${encodeURIComponent(address)}_rb/`;
-
-  async function load() {
-    const r = await fetch(`/api/properties/${propertyId}/history`);
-    if (r.ok) setPoints(await r.json());
-  }
-  useEffect(() => { if (open) load(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function add() {
-    const v = parseNum(value);
-    if (!date || !v) return;
-    setBusy(true);
-    try {
-      const r = await fetch(`/api/properties/${propertyId}/history`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, value: v }),
-      });
-      if (r.ok) { setPoints(await r.json()); setDate(''); setValue(''); onChanged(); }
-    } finally { setBusy(false); }
-  }
-
-  async function del(d: string) {
-    setBusy(true);
-    try {
-      const r = await fetch(`/api/properties/${propertyId}/history/${d}`, { method: 'DELETE' });
-      if (r.ok) { setPoints(await r.json()); onChanged(); }
-    } finally { setBusy(false); }
-  }
-
-  const parsed = pasteText.trim() ? parseZillowTable(pasteText) : [];
-
-  async function importBulk() {
-    if (!parsed.length) return;
-    setBusy(true);
-    try {
-      const r = await fetch(`/api/properties/${propertyId}/history/bulk`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ points: parsed }),
-      });
-      if (r.ok) { setPoints(await r.json()); setPasteText(''); onChanged(); }
-    } finally { setBusy(false); }
-  }
-
-  if (!open) {
-    return (
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-        <button onClick={() => setOpen(true)} aria-expanded={false} style={linkBtn}>
-          📈 Value history{points.length ? ` (${points.length})` : ''}
-        </button>
-      </div>
-    );
-  }
-
-  const cell = { padding: '5px 8px', fontSize: 13 };
-  const note = { fontSize: 11, color: 'var(--muted)', margin: '0 0 8px', lineHeight: 1.5 };
-
-  return (
-    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--muted)' }}>Value history</span>
-        <button onClick={() => setOpen(false)} aria-expanded style={linkBtn}>close</button>
-      </div>
-
-      <p style={note}>
-        A home's own Zestimate history tracks <em>this</em> property, so it's more accurate
-        than KevFin's default ZIP-level estimate (ZHVI). Paste it once and the net-worth
-        trend follows your home instead of the neighborhood average.
-      </p>
-      <ol style={{ ...note, paddingLeft: 16 }}>
-        <li>
-          <a href={zillowUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
-            Open this home's Zestimate history on Zillow →
-          </a>
-        </li>
-        <li>Choose <strong>Table view</strong>, select all, and copy.</li>
-        <li>Paste below and Import.</li>
-      </ol>
-
-      <textarea
-        value={pasteText}
-        onChange={e => setPasteText(e.target.value)}
-        rows={4}
-        placeholder={'Paste Zillow’s table here\ne.g.  Jul 2026    $1,035,800'}
-        style={{ fontSize: 12, padding: 8, resize: 'vertical', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' }}
-      />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 6 }}>
-        <span style={{ fontSize: 11, color: pasteText.trim() && !parsed.length ? 'var(--red)' : 'var(--muted)' }}>
-          {pasteText.trim()
-            ? (parsed.length
-                ? `Found ${parsed.length} points (${fmtMonth(parsed[0].date)} → ${fmtMonth(parsed[parsed.length - 1].date)})`
-                : 'No date/value rows recognized')
-            : 'Paste from Zillow, or add points by hand below.'}
-        </span>
-        <button className="btn-primary" onClick={importBulk} disabled={busy || !parsed.length}
-          style={{ fontSize: 11, padding: '4px 10px', flexShrink: 0 }}>{busy ? '…' : `Import ${parsed.length || ''}`.trim()}</button>
-      </div>
-
-      {points.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 10 }}>
-          <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
-            {points.length} saved point{points.length > 1 ? 's' : ''}
-          </span>
-          {points.map(pt => (
-            <div key={pt.date} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-              <span style={{ color: 'var(--muted)' }}>{fmtDate(pt.date)}</span>
-              <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <strong>{fmt(pt.value)}</strong>
-                <button onClick={() => { if (!busy) del(pt.date); }} title="Remove" aria-label={`Remove value for ${fmtDate(pt.date)}`}
-                  style={{ ...linkBtn, color: 'var(--red)' }}>✕</button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ marginTop: 10 }}>
-        {!manualOpen ? (
-          <button onClick={() => setManualOpen(true)} style={linkBtn}>+ add a single dated value</button>
-        ) : (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...cell, flex: 1 }} />
-            <input value={value} onChange={e => setValue(e.target.value)} placeholder="Value" inputMode="numeric"
-              style={{ ...cell, width: 100 }} onKeyDown={e => { if (e.key === 'Enter') add(); }} />
-            <button className="btn-primary" onClick={add} disabled={busy || !date || !value}
-              style={{ fontSize: 11, padding: '4px 10px' }}>{busy ? '…' : 'Add'}</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 const INDEX_OPTIONS: { key: string; symbol: string; label: string }[] = [
@@ -863,7 +503,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
   HIDE_BALANCES = privacy; // synced each render so fmt() everywhere honors it
 
   const showAccounts = !excluded.includes('accounts');
-  const showRealEstate = !excluded.includes('real_estate');
   const indexOpt = INDEX_OPTIONS.find(o => o.key === indexKey) ?? INDEX_OPTIONS[0];
 
   // Fetch the comparison index series when the selection changes.
@@ -884,11 +523,10 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
   // Clicking a series in the chart legend toggles the same inclusion as the cards.
   function toggleSeries(dataKey: string) {
     if (dataKey === 'accounts_total') toggleExclude('accounts');
-    else if (dataKey === 'real_estate_total') toggleExclude('real_estate');
   }
 
   const { data: history, loading: historyLoading, error: historyError, refetch: refetchHistory } = useApi<Snapshot[]>('/api/net-worth/history?days=10000');
-  const { data: breakdown, loading: breakdownLoading, error: breakdownError, refetch: refetchBreakdown } = useApi<{ accounts: Account[]; manualAssets: ManualAsset[]; properties: Property[] }>('/api/net-worth/breakdown');
+  const { data: breakdown, loading: breakdownLoading, error: breakdownError, refetch: refetchBreakdown } = useApi<{ accounts: Account[]; manualAssets: ManualAsset[] }>('/api/net-worth/breakdown');
   const { data: plaidItems, refetch: refetchPlaid } = useApi<PlaidItem[]>('/api/plaid/items');
 
   const latest = history?.[0];
@@ -925,14 +563,12 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
     const snap: SessionSnapshot = {
       net_worth: latest.net_worth,
       accounts_total: latest.accounts_total,
-      real_estate_total: latest.real_estate_total,
       at: visitAt,
     };
     if (!lastSession
       || lastSession.at !== visitAt
       || lastSession.net_worth !== snap.net_worth
-      || lastSession.accounts_total !== snap.accounts_total
-      || lastSession.real_estate_total !== snap.real_estate_total) {
+      || lastSession.accounts_total !== snap.accounts_total) {
       setLastSession(snap);
     }
   }, [latest, lastSession, setLastSession]);
@@ -997,9 +633,8 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(s => {
       const acc = showAccounts ? s.accounts_total : 0;
-      const re = showRealEstate ? s.real_estate_total : 0;
-      // Pass zeroed values so the stacked area chart renders the correct height.
-      return { date: s.date, accounts_total: acc, real_estate_total: re, net_worth: acc + re };
+      // Pass zeroed values so the area chart renders the correct height.
+      return { date: s.date, accounts_total: acc, net_worth: acc };
     });
 
   // Overlay the index, normalized so it starts at the displayed net worth.
@@ -1014,13 +649,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
     }
     const factor = filled[0] ? displayed[0].net_worth / filled[0] : 1;
     chartData = displayed.map((pt, k) => ({ ...pt, index: filled[k] * factor }));
-  }
-
-  async function removeProperty(id: number) {
-    const p = breakdown?.properties?.find(x => x.id === id);
-    if (!confirm(`Remove ${p ? `“${p.address}”` : 'this property'} and its mortgage details from your net worth?`)) return;
-    await fetch(`/api/properties/${id}`, { method: 'DELETE' });
-    refetchAll();
   }
 
   async function removePlaidItem(itemId: string, label: string) {
@@ -1087,31 +715,22 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
         </div>
       )}
 
-      {/* KPI cards — Accounts & assets / Home equity toggle their inclusion in the graph */}
-      <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: latest ? 12 : 32 }}>
+      {/* KPI cards — Accounts & assets toggles its inclusion in the graph */}
+      <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: latest ? 12 : 32 }}>
         {[
           {
             // The hero follows the same composition as the chart, so say so when a
             // card is hidden instead of silently showing a partial total.
-            label: !showAccounts && !showRealEstate ? 'Net Worth · nothing selected'
-              : !showRealEstate ? 'Net Worth · accounts & assets only'
-              : !showAccounts ? 'Net Worth · home equity only'
-              : 'Net Worth',
-            value: latest ? (showAccounts ? latest.accounts_total : 0) + (showRealEstate ? latest.real_estate_total : 0) : null,
+            label: !showAccounts ? 'Net Worth · nothing selected' : 'Net Worth',
+            value: latest ? (showAccounts ? latest.accounts_total : 0) : null,
             color: 'var(--accent)', key: null, excluded: false, hint: undefined as string | undefined,
             // Net-worth delta follows the same composition shown above, so hiding a
             // series from the graph also drops it from the change figure.
-            delta: latest && baseline
-              ? (showAccounts ? latest.accounts_total : 0) + (showRealEstate ? latest.real_estate_total : 0)
-                - ((showAccounts ? baseline.accounts_total : 0) + (showRealEstate ? baseline.real_estate_total : 0))
-              : null,
+            delta: latest && baseline && showAccounts ? latest.accounts_total - baseline.accounts_total : null,
           },
           { label: 'Accounts & assets', value: latest?.accounts_total ?? null, color: 'var(--amber)', key: 'accounts', excluded: !showAccounts,
             hint: 'Linked accounts plus manual assets, with credit cards netted out. Hidden accounts are left out.',
             delta: latest && baseline ? latest.accounts_total - baseline.accounts_total : null },
-          { label: 'Home equity', value: latest?.real_estate_total ?? null, color: 'var(--green)', key: 'real_estate', excluded: !showRealEstate,
-            hint: 'Home value minus mortgage balance, summed across your properties.',
-            delta: latest && baseline ? latest.real_estate_total - baseline.real_estate_total : null },
         ].map(card => {
           const isHero = card.key === null;
           const deltaText = !card.excluded && card.delta != null ? fmtDelta(card.delta) : '';
@@ -1123,7 +742,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
               <span style={{ display: 'block', color: 'var(--muted)', fontSize: 13, marginBottom: 8 }}>
                 {card.label}
                 {card.excluded && <span style={{ fontSize: 11, marginLeft: 6 }}>(hidden)</span>}
-                {isHero && (!showAccounts || !showRealEstate) && (
+                {isHero && !showAccounts && (
                   <button className="btn-ghost" onClick={() => setExcluded([])}
                     style={{ fontSize: 11, padding: '2px 8px', marginLeft: 8 }}>Show all</button>
                 )}
@@ -1229,7 +848,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
             </select>
             <button className="btn-ghost" onClick={triggerBackfill} disabled={backfilling}
               style={{ fontSize: 12, padding: '4px 10px' }}
-              title="Reconstruct ~5 years: cash/credit from transactions; brokerage from holdings × historical market prices; real estate from entered Zestimate history (or the Zillow Home Value Index for the ZIP where none is entered)">
+              title="Reconstruct ~5 years: cash/credit from transactions; brokerage from holdings × historical market prices">
               {backfilling ? 'Backfilling…' : '⟲ Backfill'}
             </button>
           </div>
@@ -1243,7 +862,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
                 data={chartData}
                 mode={chartMode}
                 showAccounts={showAccounts}
-                showRealEstate={showRealEstate}
                 indexLabel={indexOpt.symbol ? indexOpt.label : undefined}
                 onToggleSeries={toggleSeries}
               />
@@ -1260,15 +878,14 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
         }
         {visibleHistory.length > 0 && (
           <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 10, opacity: 0.7 }}>
-            Historical points reconstruct cash & credit from transactions, brokerage from each holding's
-            historical market price (untickered index funds like 529 portfolios use proxy ETFs), and real
-            estate from entered Zestimate history (or the Zillow Home Value Index for the ZIP where none is entered).
+            Historical points reconstruct cash & credit from transactions, and brokerage from each holding's
+            historical market price (untickered index funds like 529 portfolios use proxy ETFs).
             Crypto is held flat. Daily history points capture changes going forward.
           </p>
         )}
       </div>
 
-      <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24 }}>
         {/* Institutions */}
         <div style={{
           background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24,
@@ -1367,24 +984,6 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
           </div>
         </div>
 
-        {/* Properties */}
-        <div style={{
-          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24,
-        }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Real Estate</h2>
-          <div>
-            {breakdown?.properties && breakdown.properties.length === 0 && (
-              <p style={{ color: 'var(--muted)', fontSize: 14 }}>No properties added yet.</p>
-            )}
-            {breakdown?.properties?.map(p => (
-              <PropertyRow key={p.id} property={p} onRemove={removeProperty} onUpdate={refetchAll} />
-            ))}
-          </div>
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-            <AddProperty onAdded={refetchAll} />
-            <ZillowKey />
-          </div>
-        </div>
       </div>
 
       {/* Manual assets (Treasury bonds, cash, collectibles, etc.) */}

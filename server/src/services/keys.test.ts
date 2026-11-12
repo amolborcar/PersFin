@@ -14,7 +14,7 @@ const envFile = vi.hoisted(() => {
 const dbRef = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock('../db/schema.js', () => ({ getDb: () => dbRef.db }));
 
-import { saveClaudeToken, saveOpenWebNinjaKey, savePlaidKeys, saveSecContactEmail, getKeyStatus, KeyError } from './keys.js';
+import { saveClaudeToken, savePlaidKeys, saveSecContactEmail, getKeyStatus, KeyError } from './keys.js';
 import { fetchEdgarConstituents, getLookThroughIssue } from './edgarHoldings.js';
 
 // A line break in a value would inject extra KEY=VALUE lines into server/.env
@@ -26,13 +26,11 @@ describe('env value hardening', () => {
     // The in-app test runner runs inside a configured install, where these keys
     // may already be set — so check they were left unchanged, not unset. Compare
     // as booleans: a failing toBe() would print the real secret in the results.
-    const before = { claude: process.env.CLAUDE_CODE_OAUTH_TOKEN, owm: process.env.OPENWEBNINJA_KEY };
+    const before = { claude: process.env.CLAUDE_CODE_OAUTH_TOKEN };
     for (const bad of ['x\nCLAUDE_BIN=/tmp/evil', 'x\r\nFOO=1', 'ab\0cd']) {
       expect(() => saveClaudeToken(bad)).toThrow(KeyError);
-      expect(() => saveOpenWebNinjaKey(bad)).toThrow(KeyError);
     }
     expect(process.env.CLAUDE_CODE_OAUTH_TOKEN === before.claude, 'Claude token was modified').toBe(true);
-    expect(process.env.OPENWEBNINJA_KEY === before.owm, 'OpenWebNinja key was modified').toBe(true);
   });
 
   it('rejects line breaks in Plaid credentials before validating them', async () => {

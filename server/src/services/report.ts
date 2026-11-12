@@ -20,7 +20,7 @@ import {
   type ReportSignal, type ReportBucket, type ReportKpi, type SectionStatus,
 } from './reportTemplate.js';
 
-interface Snapshot { date: string; accounts_total: number; real_estate_total: number; net_worth: number }
+interface Snapshot { date: string; accounts_total: number; net_worth: number }
 
 const TAX_LABELS: Record<string, string> = {
   taxable: 'Taxable', pretax: 'Pre-tax', roth: 'Roth', hsa: 'HSA', college: 'College / 529',
@@ -33,17 +33,17 @@ const periodLabel = (w: ReportWindow) => fmtRangeUS(w.periodStart, w.periodEnd);
 
 interface AccountsResult {
   accounts: ReportAccount[]; status: SectionStatus; showChange: boolean;
-  cashTotal: number; reEquity: number; propertyCount: number;
+  cashTotal: number;
 }
 
-// Flat list of every visible account, manual asset and property's equity. When the
+// Flat list of every visible account and manual asset. When the
 // balance_observations table has a reading within ~7 days of BOTH the quarter's
 // start and end snapshots, the row carries its change over the quarter; if no row
 // can, the change column is dropped entirely rather than faked.
 function buildAccounts(startDate: string | null, endDate: string | null): AccountsResult {
-  let cashTotal = 0, reEquity = 0, propertyCount = 0;
+  let cashTotal = 0;
   try {
-    const { accounts, manualAssets, properties } = getCurrentBreakdown();
+    const { accounts, manualAssets } = getCurrentBreakdown();
     const db = getDb();
     const change = (key: string): number | null => {
       if (!startDate || !endDate) return null;
@@ -60,17 +60,11 @@ function buildAccounts(startDate: string | null, endDate: string | null): Accoun
       if (a.category === 'banking') cashTotal += a.balance;
     }
     for (const ma of manualAssets) rows.push({ name: ma.name, org: 'Manual asset', balance: ma.value, change: change(`manual:${ma.id}`) });
-    for (const p of properties) {
-      const equity = (p.zestimate ?? 0) - (p.mortgage_balance ?? 0);
-      rows.push({ name: `${p.address} (equity)`, org: 'Home', balance: equity, change: change(`property:${p.id}`) });
-      reEquity += equity;
-      propertyCount++;
-    }
     const showChange = rows.some(r => typeof r.change === 'number');
-    return { accounts: rows, status: rows.length ? 'ok' : 'empty', showChange, cashTotal, reEquity, propertyCount };
+    return { accounts: rows, status: rows.length ? 'ok' : 'empty', showChange, cashTotal };
   } catch (e) {
     console.error('[report] accounts failed:', e);
-    return { accounts: [], status: 'failed', showChange: false, cashTotal: 0, reEquity: 0, propertyCount: 0 };
+    return { accounts: [], status: 'failed', showChange: false, cashTotal: 0 };
   }
 }
 
@@ -95,15 +89,14 @@ async function buildAllocation(): Promise<{ slices: ReportSlice[]; total: number
 
 // The slice of getBudget()'s summary the report needs.
 export interface MonthCash {
-  income: number; spending: number; mortgage: number;
+  income: number; spending: number;
   byCategory: { category: string; spent: number }[];
 }
 
 // Pure: fold per-month budget summaries (null = no data that month) into the
-// quarter's cash-flow figures. Spending INCLUDES mortgage payments — getBudget
-// reports them separately ("excluded from spending") but they are real cash out,
-// and counting them keeps income − spending equal to cash actually saved, which
-// is what the net-worth waterfall needs (principal paid shows up in home equity).
+// quarter's cash-flow figures. getBudget's spending already includes mortgage
+// and other loan payments, so income − spending equals cash actually saved,
+// which is what the net-worth waterfall needs.
 export function aggregateCashflow(
   keys: string[], months: (MonthCash | null)[], label: (cat: string) => string, topN = 6,
 ): ReportCashflow {
@@ -112,11 +105,10 @@ export function aggregateCashflow(
   const out = keys.map((k, i) => {
     const m = months[i];
     const inc = m?.income ?? 0;
-    const spend = m ? m.spending + m.mortgage : 0;
+    const spend = m?.spending ?? 0;
     income += inc; spending += spend;
     if (m) {
       for (const c of m.byCategory) if (c.spent > 0) cats.set(c.category, (cats.get(c.category) ?? 0) + c.spent);
-      if (m.mortgage > 0) cats.set('Mortgage', (cats.get('Mortgage') ?? 0) + m.mortgage);
     }
     return { label: monthLabel(k), income: Math.round(inc), spending: Math.round(spend) };
   });
@@ -140,7 +132,7 @@ async function buildCashflow(w: Pick<ReportWindow, 'quarter' | 'year'>): Promise
       // getBudget silently falls back to the latest month when asked for one it has
       // no transactions in — treat that as "no data", not as that other month's data.
       if (s.month !== k) return null;
-      return { income: s.income, spending: s.spending, mortgage: s.mortgage, byCategory: s.byCategory.filter(c => !c.excluded) };
+      return { income: s.income, spending: s.spending, byCategory: s.byCategory.filter(c => !c.excluded) };
     }));
     return aggregateCashflow(keys, months, c => labeler.label(c));
   } catch (e) {
@@ -217,10 +209,10 @@ export function buildSignals(
 // Four headline tiles. A tile whose inputs are missing shows "—" and says why —
 // never a made-up zero.
 export function buildKpis(i: {
-  cashflow: Pick<ReportCashflow, 'saved' | 'savingsRate' | 'status'>;
+  cashflow: Pick<ReportCashflow, 'saved' | 'savingsRate' | 'spending' | 'status'>;
   attribution: Attribution | null;
   runway: number | null;
-  homeShare: number | null;
+  priorSpending: { label: string; amount: number } | null;
 }): ReportKpi[] {
   const na = (label: string, why: string): ReportKpi => ({ label, value: '—', valueTone: 'none', note: why, noteTone: 'none' });
   const kpis: ReportKpi[] = [];
@@ -245,9 +237,16 @@ export function buildKpis(i: {
         label: 'Emergency runway', value: `${i.runway.toFixed(1)} mo`, valueTone: 'none',
         note: i.runway < 6 ? 'Below a 6-month target' : 'At or above a 6-month target', noteTone: i.runway < 6 ? 'warn' : 'none',
       });
-  kpis.push(i.homeShare == null
-    ? na('Home equity share', 'Needs a net-worth snapshot')
-    : { label: 'Home equity share', value: `${Math.round(i.homeShare * 100)}%`, valueTone: 'none', note: 'of net worth', noteTone: 'none' });
+  const ps = i.priorSpending;
+  kpis.push(cf.status !== 'ok'
+    ? na('Spent this quarter', cf.status === 'failed' ? 'Cash flow unavailable' : 'No transactions this quarter')
+    : {
+        label: 'Spent this quarter', value: fmtMoney(cf.spending), valueTone: 'none',
+        note: ps && ps.amount > 0
+          ? `${cf.spending >= ps.amount ? '+' : '−'}${Math.round(Math.abs(cf.spending - ps.amount) / ps.amount * 100)}% vs. ${ps.label}`
+          : 'No prior quarter to compare',
+        noteTone: 'none',
+      });
   return kpis;
 }
 
@@ -268,7 +267,7 @@ export function deterministicBrief(i: {
     const a = i.attribution;
     if (a) {
       const parts = [
-        { name: 'savings', v: a.saved }, { name: 'home equity', v: a.home }, { name: 'market moves and other changes', v: a.market },
+        { name: 'savings', v: a.saved }, { name: 'market moves and other changes', v: a.market },
       ].sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
       if (Math.abs(parts[0].v) > 0) s += `, led by ${parts[0].name} (${fmtSigned(parts[0].v)})`;
     }
@@ -451,13 +450,13 @@ export async function generateQuarterlyReport(now = new Date()): Promise<string>
   const runway = runwayMonths(acct.cashTotal, cashflow);
   const today = now.toISOString().slice(0, 10);
 
-  // What changed: end − start = saved + home-equity change + remainder ("market & other").
+  // What changed: end − start = saved + remainder ("market & other").
   const s = fig.startSnap, e = fig.endSnap;
   const attribution: Attribution | null =
-    s && e && cashflow.status === 'ok' && typeof s.real_estate_total === 'number' && typeof e.real_estate_total === 'number'
-      ? attributeChange({ start: s.net_worth, end: e.net_worth, saved: cashflow.saved, homeEquityDelta: e.real_estate_total - s.real_estate_total })
+    s && e && cashflow.status === 'ok'
+      ? attributeChange({ start: s.net_worth, end: e.net_worth, saved: cashflow.saved })
       : null;
-  const homeShare = e && typeof e.real_estate_total === 'number' && e.net_worth > 0 ? e.real_estate_total / e.net_worth : null;
+  const priorSpending = priorCf.status === 'ok' ? { label: pw.quarterLabel.split(' ')[0], amount: priorCf.spending } : null;
 
   const base: Omit<ReportModel, 'brief' | 'noteSource'> = {
     quarterLabel: w.quarterLabel,
@@ -471,7 +470,7 @@ export async function generateQuarterlyReport(now = new Date()): Promise<string>
       points: monthEndSeries(history, w.periodEnd.slice(0, 7), 12),
       shadeKeys: quarterMonthKeys(w),
     },
-    kpis: buildKpis({ cashflow, attribution, runway, homeShare }),
+    kpis: buildKpis({ cashflow, attribution, runway, priorSpending }),
     attribution,
     startLabel: attribution && s ? fmtShort(s.date) : null,
     endLabel: attribution && e ? fmtShort(e.date) : null,
@@ -489,14 +488,13 @@ export async function generateQuarterlyReport(now = new Date()): Promise<string>
     (netWorthChangePct != null ? ` (${(netWorthChangePct * 100).toFixed(1)}%)` : '') +
     (s && netWorthChange != null ? ` since ${s.date}` : '') +
     (yoyPct != null ? `, year-over-year ${(yoyPct * 100).toFixed(1)}%` : ', year-over-year not available (insufficient history)') + '.\n' +
-    (attribution ? `Change drivers: saved ${fmtSigned(attribution.saved)}, home equity ${fmtSigned(attribution.home)}, market & other ${fmtSigned(attribution.market)}.\n` : '') +
+    (attribution ? `Change drivers: saved ${fmtSigned(attribution.saved)}, market & other ${fmtSigned(attribution.market)}.\n` : '') +
     (cfOk
       ? `Cash flow (spending includes mortgage payments): income $${Math.round(cashflow.income).toLocaleString('en-US')}, spending $${Math.round(cashflow.spending).toLocaleString('en-US')}, saved $${Math.round(cashflow.saved).toLocaleString('en-US')}` +
         (cashflow.savingsRate != null ? ` (${Math.round(cashflow.savingsRate * 100)}% savings rate)` : '') + '.\n'
       : 'Cash flow: not available for this quarter.\n') +
     (alloc.slices.length ? `Allocation (current): ${alloc.slices.map(x => `${x.label} ${x.pct.toFixed(0)}%`).join(', ')}.\n` : '') +
     `Liquid cash (current): $${Math.round(acct.cashTotal).toLocaleString('en-US')}.\n` +
-    (acct.propertyCount ? `Real estate: ${acct.propertyCount} propert${acct.propertyCount === 1 ? 'y' : 'ies'}, equity $${Math.round(acct.reEquity).toLocaleString('en-US')}.\n` : '') +
     (taxBuckets.length ? `Tax treatment (current): ${taxBuckets.map(b => `${b.label} $${Math.round(b.value).toLocaleString('en-US')}`).join(', ')}.\n` : '') +
     (signals.length ? `Signals: ${signals.map(x => `${x.label} ${x.value}`).join('; ')}.` : '');
 

@@ -35,15 +35,6 @@ export function getKeyStatus() {
       clientIdHint: maskHint(process.env.PLAID_CLIENT_ID),
       secretSet: Boolean(process.env.PLAID_SECRET),
     },
-    // Property values: OpenWeb Ninja is tried first, APILLOW is the fallback.
-    openwebninja: {
-      set: Boolean(process.env.OPENWEBNINJA_KEY),
-      hint: maskHint(process.env.OPENWEBNINJA_KEY),
-    },
-    apillow: {
-      set: Boolean(process.env.APILLOW_KEY),
-      hint: maskHint(process.env.APILLOW_KEY),
-    },
     // SEC EDGAR fund holdings need a declared contact (see edgarHoldings.ts).
     // An email address isn't a secret, so it's returned in full for editing.
     sec: {
@@ -124,22 +115,6 @@ export async function savePlaidKeys(input: {
   if (input.secret !== undefined) updates.PLAID_SECRET = secret;
   setEnvVars(updates);
   resetPlaidClient(); // next Plaid call rebuilds the client from the new creds
-}
-
-// Persist a Zillow-value provider key. zillow.ts reads process.env at call time,
-// so these apply without a restart. We don't burn an API call validating them —
-// a wrong/over-quota key simply fails the next lookup with a logged error (and,
-// for OpenWeb Ninja, falls back to RapidAPI).
-export function saveOpenWebNinjaKey(key: string): void {
-  const trimmed = key.trim();
-  if (!trimmed) throw new KeyError('A key is required.');
-  setEnvVars({ OPENWEBNINJA_KEY: trimmed });
-}
-
-export function saveApillowKey(key: string): void {
-  const trimmed = key.trim();
-  if (!trimmed) throw new KeyError('A key is required.');
-  setEnvVars({ APILLOW_KEY: trimmed });
 }
 
 // Persist a Claude Code OAuth token (from `claude setup-token`) so the assistant

@@ -44,3 +44,43 @@ describe('migration 7 (remove-simplefin)', () => {
     expect(() => { for (const m of MIGRATIONS) m.up(db); }).not.toThrow();
   });
 });
+
+// Migration 8 removes real-estate tracking and keeps each day's accounts history exact.
+describe('migration 8 (remove-real-estate)', () => {
+  it('drops property tables and derived records, and sets net worth to the accounts total', () => {
+    const db = new Database(':memory:');
+    for (const m of MIGRATIONS.filter(m => m.version <= 7)) m.up(db);
+
+    db.prepare(`INSERT INTO properties (id, address, zestimate, mortgage_balance) VALUES (1, '1 Elm St', 500000, 300000)`).run();
+    db.prepare(`INSERT INTO property_value_history (property_id, date, value) VALUES (1, '2026-01-01', 490000)`).run();
+    const snap = db.prepare(`INSERT INTO net_worth_snapshots (date, accounts_total, real_estate_total, net_worth) VALUES (?, ?, ?, ?)`);
+    snap.run('2026-01-01', 100000, 190000, 290000);
+    snap.run('2026-01-02', 101000, 200000, 301000);
+    const obs = db.prepare(`INSERT INTO balance_observations (account_id, date, balance) VALUES (?, '2026-01-01', 1)`);
+    obs.run('property:1');
+    obs.run('acct-1');
+    obs.run('manual:3');
+    const meta = db.prepare(`INSERT INTO meta (key, value) VALUES (?, 'x')`);
+    meta.run('zhvi_97477');
+    meta.run('last_real_estate_refresh');
+    meta.run('backfill_version');
+
+    MIGRATIONS.find(m => m.version === 8)!.up(db);
+
+    const tables = (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map(t => t.name);
+    expect(tables).not.toContain('properties');
+    expect(tables).not.toContain('property_value_history');
+    const cols = (db.prepare(`SELECT name FROM pragma_table_info('net_worth_snapshots')`).all() as { name: string }[]).map(c => c.name);
+    expect(cols).toEqual(['id', 'date', 'accounts_total', 'net_worth']);
+    expect(db.prepare(`SELECT date, accounts_total, net_worth FROM net_worth_snapshots ORDER BY date`).all()).toEqual([
+      { date: '2026-01-01', accounts_total: 100000, net_worth: 100000 },
+      { date: '2026-01-02', accounts_total: 101000, net_worth: 101000 },
+    ]);
+    const obsIds = (db.prepare(`SELECT account_id FROM balance_observations ORDER BY account_id`).all() as { account_id: string }[]).map(r => r.account_id);
+    expect(obsIds).toEqual(['acct-1', 'manual:3']);
+    const metaKeys = (db.prepare(`SELECT key FROM meta`).all() as { key: string }[]).map(r => r.key);
+    expect(metaKeys).toContain('backfill_version');
+    expect(metaKeys).not.toContain('zhvi_97477');
+    expect(metaKeys).not.toContain('last_real_estate_refresh');
+  });
+});

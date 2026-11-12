@@ -441,6 +441,23 @@ function removeSimpleFin(db: Db) {
   if (hasTable('simplefin_connections')) db.exec(`DROP TABLE simplefin_connections`);
 }
 
+// Real-estate tracking was removed. Drop the property tables and every derived
+// record: home-equity observations, cached home-value (ZHVI) series, and the
+// real-estate refresh clock. Net-worth history keeps its accounts and manual
+// assets exactly as recorded — each day's net worth becomes its accounts_total,
+// which is what it would have been without the homes — so no rebuild (and no
+// loss of observed snapshots to a re-estimate) is needed.
+function removeRealEstate(db: Db) {
+  db.exec(`
+    DROP TABLE IF EXISTS property_value_history;
+    DROP TABLE IF EXISTS properties;
+    DELETE FROM balance_observations WHERE account_id LIKE 'property:%';
+    DELETE FROM meta WHERE key LIKE 'zhvi_%' OR key = 'last_real_estate_refresh';
+    UPDATE net_worth_snapshots SET net_worth = accounts_total;
+    ALTER TABLE net_worth_snapshots DROP COLUMN real_estate_total;
+  `);
+}
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'baseline', up: baseline },
   { version: 2, name: 'feed-transactions-table', up: feedTransactionsTable },
@@ -449,6 +466,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 5, name: 'imported-cat-edited', up: importedCatEdited },
   { version: 6, name: 'report-cache-table', up: reportCacheTable },
   { version: 7, name: 'remove-simplefin', up: removeSimpleFin },
+  { version: 8, name: 'remove-real-estate', up: removeRealEstate },
 ];
 
 // Apply every migration newer than the database's user_version, each in its own

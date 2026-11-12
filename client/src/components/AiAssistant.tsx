@@ -30,7 +30,7 @@ const SUGGESTIONS: Record<View, string[]> = {
     "What's my net worth?",
     'How has it changed this year?',
     'What are my largest accounts?',
-    'How much home equity do I have?',
+    'How much cash do I have?',
   ],
   allocation: [
     'What is my investment allocation?',

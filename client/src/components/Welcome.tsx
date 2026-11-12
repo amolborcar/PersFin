@@ -14,22 +14,17 @@ const STEPS: { icon: string; title: string; body: string }[] = [
   {
     icon: '🔒',
     title: 'Your data stays private',
-    body: 'KevFin runs on your own computer. Your data is stored only on this computer. Property-value and price lookups send only addresses and ticker symbols.',
+    body: 'KevFin runs on your own computer. Your data is stored only on this computer. Price lookups send only ticker symbols.',
   },
   {
     icon: '🔗',
     title: 'Connect your accounts',
-    body: 'On the Dashboard, open Financial Accounts → Manage connections to link your banks and brokerages. Add real estate in the Real Estate card and other assets in Manual Assets.',
+    body: 'On the Dashboard, open Financial Accounts → Manage connections to link your banks and brokerages. Add other assets in Manual Assets.',
   },
   {
     icon: '📊',
     title: 'Explore your finances',
     body: 'Use the tabs at the top: Dashboard for net worth, Investments for allocation, Budget for spending, and Forecast to project your retirement.',
-  },
-  {
-    icon: '🏡',
-    title: 'Sharper real-estate history',
-    body: 'A property’s value history defaults to a ZIP-level index (ZHVI). For a more accurate trend that follows your specific home, click edit on the property, open Value history, and paste the Zestimate history from Zillow — it overrides the ZIP average for that property.',
   },
   {
     icon: '💾',
@@ -123,7 +118,7 @@ export default function Welcome() {
               <div style={{ fontSize: 40, marginBottom: 8 }} aria-hidden>👋</div>
               <h2 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.5px' }}>Welcome to KevFin</h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 6, lineHeight: 1.5 }}>
-                Your private net-worth tracker — banks, investments, real estate, budgeting, and a
+                Your private net-worth tracker — banks, investments, budgeting, and a
                 retirement forecast, all in one place that runs on your own computer.
               </p>
             </div>

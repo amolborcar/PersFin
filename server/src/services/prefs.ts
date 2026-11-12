@@ -13,7 +13,7 @@ import { getDb } from '../db/schema.js';
 //
 // Values are stored verbatim as the JSON strings the client serializes, under a
 // `pref:` namespace in the shared `meta` key/value table so they never collide
-// with operational meta keys (daily_snapshot_enabled, last_real_estate_refresh).
+// with operational meta keys (daily_snapshot_enabled, last_backfill).
 
 const NS = 'pref:';
 

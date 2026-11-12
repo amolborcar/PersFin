@@ -1,7 +1,6 @@
 import { getDb } from '../db/schema.js';
 import { syncFeedTransactions, readFeedTransactions, FEED_WINDOW_DAYS, type RawTxn } from './feedStore.js';
 import { getAllPlaidTransactions } from './plaid.js';
-import { realEstateCarry, type RealEstateCarry } from './mortgage.js';
 import {
   TAXONOMY, CATEGORIES, suggestEmoji, normalizeImportedCategory, ensureImportedCategories,
   type Category, type CatDef, type CatGroup,
@@ -462,14 +461,12 @@ function detectTransferPairs(all: BudgetTxn[], ruledIds: Set<string>): number {
 export interface BudgetSummary {
   months: string[];                       // available YYYY-MM, newest first
   month: string;                          // the month being shown
-  transactions: BudgetTxn[];              // for the requested month (excludes Transfers; Mortgage kept but flagged)
+  transactions: BudgetTxn[];              // for the requested month (excludes Transfers)
   byCategory: { category: string; spent: number; count: number; target: number; period?: 'monthly' | 'annual'; ytdSpent?: number; excluded?: boolean }[];
   needsReview: BudgetTxn[];               // uncategorized ('Other') expenses to assign
   recent: BudgetTxn[];                    // most-recent transactions across all months (for the overview)
   income: number;
   spending: number;
-  mortgage: number;                       // mortgage payments (excluded from spending)
-  housing: RealEstateCarry;               // property-derived carry breakdown (informational; not in spending)
   totalBudget: number;                    // sum of targets
   // For the in-progress month both figures are measured THROUGH the same day of the
   // month (`asOfDay`), so a partial month is never compared with a whole one.
@@ -854,10 +851,10 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   // total is then clamped at >= 0 (a refund bigger than the period's charges can't
   // produce negative spending). Every total below is the sum of those clamped
   // category totals, so headline numbers always agree with the per-category rows.
-  // Spending per month (excludes income/transfers/mortgage) for prior-period comparisons.
+  // Spending per month (excludes income/transfers) for prior-period comparisons.
   const monthCat = new Map<string, Map<string, number>>(); // month -> category -> signed spend
   for (const t of all) {
-    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7)) || t.category === 'Mortgage') continue;
+    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7))) continue;
     const mk = t.date.slice(0, 7);
     const cm = monthCat.get(mk) ?? monthCat.set(mk, new Map()).get(mk)!;
     cm.set(t.category, (cm.get(t.category) ?? 0) - t.amount);
@@ -875,8 +872,7 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   // (every loop over `all` is empty) instead of throwing on `target.slice(...)`.
   const target = (month && months.includes(month) ? month : months[0]) ?? new Date().toISOString().slice(0, 7);
 
-  // Transfers are excluded from the budget transaction list. Mortgage is kept
-  // (shown grayed/“excluded”) so it stays visible without affecting totals.
+  // Transfers are excluded from the budget transaction list.
   const txns = all
     .filter(t => t.date.slice(0, 7) === target && !internal(t.category, target))
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -884,13 +880,9 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   const allMonthTxns = all.filter(t => t.date.slice(0, 7) === target);
   const catMap = new Map<string, { total: number; count: number }>();
   let income = 0;
-  let mortgage = 0;
-  let mortgageCount = 0;
   for (const t of allMonthTxns) {
     if (INCOME_SET.has(t.category)) { income += t.amount; continue; }
     if (internal(t.category, target)) continue;
-    // Mortgage cash regardless of sign — some sources post loan payments as positive.
-    if (t.category === 'Mortgage') { mortgage += Math.abs(t.amount); mortgageCount += 1; continue; }
     const e = catMap.get(t.category) ?? { total: 0, count: 0 };
     e.total -= t.amount; // signed: expenses (negative amounts) add, refunds subtract
     if (t.amount < 0) e.count += 1; // count only the expense rows
@@ -908,15 +900,13 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   const ytdByCat = new Map<string, number>();
   for (const t of all) {
     if (t.date.slice(0, 4) !== yearPrefix || t.date.slice(0, 7) > target) continue;
-    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7)) || t.category === 'Mortgage') continue;
+    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7))) continue;
     ytdByCat.set(t.category, (ytdByCat.get(t.category) ?? 0) - t.amount); // signed; refunds net down
   }
   for (const [cat, v] of ytdByCat) ytdByCat.set(cat, Math.max(0, v));
 
   // Include every category that has spending OR a target (so budgets show even at $0 spent).
-  // Mortgage is intentionally omitted here — it's appended below as an excluded row.
   const catNames = new Set<string>([...catMap.keys(), ...targets.keys()]);
-  catNames.delete('Mortgage');
   const byCategory: BudgetSummary['byCategory'] = [...catNames]
     .map(category => {
       const tg = targets.get(category);
@@ -935,11 +925,6 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
       const bv = b.period === 'annual' ? b.ytdSpent : b.spent;
       return bv - av || b.target - a.target;
     });
-
-  // Mortgage stays visible as a grayed, excluded row (never counted in spending).
-  if (mortgage > 0) {
-    byCategory.push({ category: 'Mortgage', spent: mortgage, count: mortgageCount, target: 0, excluded: true });
-  }
 
   const needsReview = txns.filter(t => t.category === 'Miscellaneous' && t.amount < 0);
   // Monthly-equivalent total (annual targets contribute 1/12).
@@ -962,7 +947,7 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
     for (const t of all) {
       const mk = t.date.slice(0, 7);
       if (!want.has(mk) || parseInt(t.date.slice(8, 10)) > day) continue;
-      if (INCOME_SET.has(t.category) || internal(t.category, mk) || t.category === 'Mortgage') continue;
+      if (INCOME_SET.has(t.category) || internal(t.category, mk)) continue;
       const cm = cats.get(mk) ?? cats.set(mk, new Map()).get(mk)!;
       cm.set(t.category, (cm.get(t.category) ?? 0) - t.amount);
     }
@@ -986,7 +971,7 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   const cumByDay = (monthKey: string): number[] => {
     const daily = new Array(32).fill(0);
     for (const t of all) {
-      if (t.date.slice(0, 7) !== monthKey || INCOME_SET.has(t.category) || internal(t.category, monthKey) || t.category === 'Mortgage') continue;
+      if (t.date.slice(0, 7) !== monthKey || INCOME_SET.has(t.category) || internal(t.category, monthKey)) continue;
       daily[parseInt(t.date.slice(8, 10))] -= t.amount; // signed: refunds reduce the running total
     }
     const cum = new Array(32).fill(0);
@@ -1024,13 +1009,13 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
     byCategory: byCategory.map(c => ({ ...c, category: lab.label(c.category) })),
     needsReview: needsReview.map(labelTxn),
     recent,
-    income, spending, mortgage, housing: realEstateCarry(), totalBudget,
+    income, spending, totalBudget,
     comparison: { priorMonth, priorYearAvg, priorYears }, asOfDay, daysInMonth: md, dailyCumulative, importedCount, importedPending,
   };
 }
 
 // Flat transaction list for the All-transactions tab. `range` is 'all' or a
-// YYYY-MM month. Excludes Transfers (internal moves); keeps Mortgage. Returns the
+// YYYY-MM month. Excludes Transfers (internal moves). Returns the
 // available months so the period selector can populate without a second call.
 export async function getTransactionsList(range = 'all'): Promise<{ months: string[]; transactions: BudgetTxn[] }> {
   ensureTables();
@@ -1080,10 +1065,10 @@ export async function getReviewQueue(): Promise<{ groups: ReviewGroup[]; topCate
   const all = await getCategorizedTransactions();
 
   // Rank candidate categories by how often the user already uses them (real
-  // expense categories only — never the catch-all, transfers, mortgage or income).
+  // expense categories only — never the catch-all, transfers or income).
   const freq = new Map<string, number>();
   for (const t of all) {
-    if (t.category === 'Miscellaneous' || isExcluded(t.category) || t.category === 'Mortgage' || INCOME_SET.has(t.category)) continue;
+    if (t.category === 'Miscellaneous' || isExcluded(t.category) || INCOME_SET.has(t.category)) continue;
     freq.set(t.category, (freq.get(t.category) ?? 0) + 1);
   }
   const activeSet = new Set(getActiveCategories());
@@ -1178,7 +1163,7 @@ export async function getSpendingProjection(): Promise<SpendingProjection> {
     if (ym > thisMonth) continue; // skip future-dated rows
     // Same card-payment rule as getBudget/getCashFlow: a payment only counts as
     // an internal move in months where the card's own purchases are tracked.
-    if (isInternalTransfer(t.category, projTrackedMonths.has(ym)) || t.category === 'Mortgage') continue;
+    if (isInternalTransfer(t.category, projTrackedMonths.has(ym))) continue;
     if (INCOME_SET.has(t.category)) { incomeByMonth.set(ym, (incomeByMonth.get(ym) ?? 0) + t.amount); continue; }
     const cm = catByMonth.get(ym) ?? new Map<string, number>();
     cm.set(t.category, (cm.get(t.category) ?? 0) - t.amount);
@@ -1404,8 +1389,7 @@ export async function applyCategoryRule(
 // --- Cash-flow Sankey -------------------------------------------------------
 // A 4-tier money-flow graph: income sources → Income → spending groups + Savings
 // → categories. Groups reuse the same taxonomy as the category picker. Transfers
-// (internal moves) are excluded; Mortgage IS included since it's real cash out —
-// unlike the Overview's "Spent", which leaves it out (the UI captions the difference).
+// (internal moves) are excluded.
 
 export type NodeFilter =
   | { type: 'income' }
@@ -1419,7 +1403,6 @@ export interface CashFlow {
   range: string; label: string;
   span: { from: string | null; to: string }; // actual date span covered (YYYY-MM-DD); `from` is null with no data
   income: number; spending: number; savings: number;
-  mortgage: number;                          // the part of `spending` that is mortgage payments
   nodes: SankeyNode[]; links: SankeyLink[];
 }
 export interface CashTxn { id: string; date: string; payee: string; merchant: string; account: string; category: string; suggested: string; amount: number; description: string; memo: string; postedAt: number; transactedAt: number | null; amountEdited?: boolean }
@@ -1578,7 +1561,7 @@ export async function getCashFlow(range = '12m', detail = false): Promise<CashFl
 
   const from = start ?? (txns.length ? txns.reduce((m, t) => (t.date < m ? t.date : m), txns[0].date) : null);
   const span = { from, to: new Date().toISOString().slice(0, 10) };
-  return { range, label, span, income: round2(income), spending: round2(spending), savings: round2(savings), mortgage: round2(catSpend.get('Mortgage') ?? 0), nodes, links };
+  return { range, label, span, income: round2(income), spending: round2(spending), savings: round2(savings), nodes, links };
 }
 
 // Transactions behind a clicked Sankey node/band, for the drill-down table.

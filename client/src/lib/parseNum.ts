@@ -2,7 +2,7 @@
 // (e.g. "495,000" or "$495,000" → 495000). parseFloat alone stops at the comma,
 // which silently truncates "495,000" to 495 (and "$1500" to NaN → 0).
 // Returns null for blank/unparseable input so callers that must not save a
-// phantom 0 (budget targets, property values) can bail out instead.
+// phantom 0 (budget targets, asset values) can bail out instead.
 export function parseNumOrNull(s: string): number | null {
   const n = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
   return isNaN(n) ? null : n;

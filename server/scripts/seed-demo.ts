@@ -24,8 +24,8 @@ const db = getDb();
 
 // --- Wipe any prior demo content so re-runs are clean -----------------------
 for (const t of [
-  'accounts', 'manual_assets', 'properties', 'net_worth_snapshots',
-  'plaid_items', 'property_value_history', 'balance_observations',
+  'accounts', 'manual_assets', 'net_worth_snapshots',
+  'plaid_items', 'balance_observations',
   'budget_targets', 'rules', 'asset_class_overrides',
   'provider_cache', 'transactions',
 ]) {
@@ -156,12 +156,7 @@ const byOrg = new Map<string, Acct[]>();
 for (const a of accounts) byOrg.set(a.org, [...(byOrg.get(a.org) ?? []), a]);
 for (const [org, list] of byOrg) seedPlaidItem(db, `demo-item-${org.toLowerCase()}`, list);
 
-// --- Property (amortized mortgage) + a manual asset -------------------------
-db.prepare(`
-  INSERT INTO properties (address, zestimate, mortgage_balance, mortgage_principal, mortgage_rate, mortgage_start, mortgage_term_years)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
-`).run('742 Evergreen Terrace, Springfield, OR 97477', 815000, 0, 540000, 5.875, '2021-07-01', 30);
-
+// --- A manual asset ---------------------------------------------------------
 db.prepare('INSERT INTO manual_assets (name, category, value) VALUES (?, ?, ?)')
   .run('I Bonds (TreasuryDirect)', 'brokerage', 15000);
 
@@ -176,17 +171,15 @@ for (const [c, v] of [
 ] as [string, number][]) target.run(c, v);
 
 // --- Synthetic net-worth history: ~5y monthly + last 90d, then today's real ---
-const snap = db.prepare(`INSERT OR REPLACE INTO net_worth_snapshots (date, accounts_total, real_estate_total, net_worth) VALUES (?, ?, ?, ?)`);
+const snap = db.prepare(`INSERT OR REPLACE INTO net_worth_snapshots (date, accounts_total, net_worth) VALUES (?, ?, ?)`);
 const startAcc = 132000, endAcc = 350449;   // accounts + manual assets grow over time
-const startRe = 138000, endRe = 312000;     // home equity grows as the loan amortizes
 const start = new Date(Date.UTC(2021, 0, 1));
 const totalDays = Math.round((TODAY.getTime() - start.getTime()) / 86400000);
 const writeSnap = (d: Date) => {
   const t = Math.min(1, Math.max(0, (d.getTime() - start.getTime()) / 86400000 / totalDays));
   const ease = Math.pow(t, 1.15); // gently accelerating growth
-  const acc = jitter(startAcc + (endAcc - startAcc) * ease, 0.025);
-  const re = startRe + (endRe - startRe) * ease; // equity curve is smooth
-  snap.run(d.toISOString().slice(0, 10), Math.round(acc), Math.round(re), Math.round(acc + re));
+  const acc = Math.round(jitter(startAcc + (endAcc - startAcc) * ease, 0.025));
+  snap.run(d.toISOString().slice(0, 10), acc, acc);
 };
 // Monthly points across the full span...
 for (let mm = 0; ; mm++) {
@@ -198,11 +191,11 @@ for (let mm = 0; ; mm++) {
 for (let back = 90; back >= 1; back--) {
   writeSnap(new Date(TODAY.getTime() - back * 86400000));
 }
-// Today's snapshot from the actual seeded accounts/property (overwrites estimate).
+// Today's snapshot from the actual seeded accounts (overwrites estimate).
 takeSnapshot();
 
 const n = db.prepare('SELECT COUNT(*) c FROM net_worth_snapshots').get() as { c: number };
 const txCount = accounts.reduce((s, a) => s + a.transactions.length, 0);
 console.log(`Seeded demo DB at ${process.env.DB_PATH}`);
-console.log(`  ${accounts.length} accounts, ${txCount} transactions, ${n.c} net-worth snapshots, 1 property, 1 manual asset`);
+console.log(`  ${accounts.length} accounts, ${txCount} transactions, ${n.c} net-worth snapshots, 1 manual asset`);
 process.exit(0);
