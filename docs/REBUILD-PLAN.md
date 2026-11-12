@@ -14,7 +14,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | 0 Baseline | Done. Build passes; tests pass (server 383, client 153). |
 | 1 SimpleFIN → Plaid | Done. Build passes; tests pass (server 388, client 153). |
 | 2 Remove real estate | Done, including the Mortgage category (migration 9). Build passes; tests pass (server 349, client 143). |
-| 3–9 | Not started |
+| 3 macOS only | Done. Build passes; tests pass (server 349, client 143). The `.dmg` build was not run (it needs a macOS runner or the Mac mini). |
+| 3b–9 | Not started |
 
 Update this table at the end of each phase.
 
@@ -134,7 +135,13 @@ Update this table at the end of each phase.
 1. Remove the `win:` and `nsis:` blocks from `desktop/electron-builder.yml`.
 2. Remove the `windows-2022` entry from `.github/workflows/desktop-build.yml`.
 3. Delete `Dockerfile`, `.dockerignore`, `docker-compose*.yml`, `DEPLOY.md`,
-   `DEPLOY-SYNOLOGY.md`, and `.github/workflows/publish-image.yml`.
+   `DEPLOY-SYNOLOGY.md`, `kevfin.env.example` (the Docker keys file), and
+   `.github/workflows/publish-image.yml`.
+4. Remove the CI step that fast-forwards `production` after a push to `main`
+   (it fed the NAS deployment).
+5. Remove Windows code paths in `desktop/main.js` and `desktop/scripts/`, the
+   Windows and Docker rows in `scripts/release.mjs`, and the Windows and Docker
+   instructions in `README.md`, `DESKTOP.md` and `docs/ADVANCED.md`.
 
 ## Phase 3b: Always on with launchd (Mac mini)
 
@@ -260,17 +267,14 @@ Recharts, with data shaping in `client/src/lib/*.ts` and Vitest tests.
 ## Phase 9: Documentation and cleanup
 
 1. Rewrite `README.md`. Update `CLAUDE.md`, `DESKTOP.md`, `docs/ADVANCED.md`,
-   and `kevfin.env.example`.
+   and `server/.env.example`.
 2. Remove links to the upstream project `kxl3785/KevFin`: releases, issues, and
-   the donation link in `README.md`; the `ghcr.io/kxl3785/kevfin` image in docs
-   (if Phase 3 left any).
-3. In `.github/workflows/ci.yml`, remove the step that fast-forwards
-   `production` after a push to `main`.
-4. Delete `.github/workflows/update-irs-limits.yml` and
+   the donation link in `README.md`.
+3. Delete `.github/workflows/update-irs-limits.yml` and
    `.github/agent-tasks/update-irs-limits.md`, or set up the `AGENT_CMD` secret.
    This repository does not have that secret.
-5. Remove dead code and unused packages.
-6. Optional rename of the app, with a one-time data path migration.
+4. Remove dead code and unused packages.
+5. Optional rename of the app, with a one-time data path migration.
 
 ## Order
 

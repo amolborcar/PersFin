@@ -30,11 +30,8 @@ function serverEntry() {
 // (the server resolves CLAUDE_BIN first). When absent, the assistant degrades to
 // its sign-in gate and the rest of the app is unaffected.
 function bundledClaudeBin() {
-  const dir = path.join(resourcesRoot(), 'claude');
-  const candidates = process.platform === 'win32'
-    ? [path.join(dir, 'claude.exe'), path.join(dir, 'claude.cmd')]
-    : [path.join(dir, 'claude')];
-  for (const c of candidates) { try { if (fs.existsSync(c)) return c; } catch { /* ignore */ } }
+  const bin = path.join(resourcesRoot(), 'claude', 'claude');
+  try { if (fs.existsSync(bin)) return bin; } catch { /* ignore */ }
   return null;
 }
 
@@ -164,7 +161,7 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => { stopServer(); if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => { stopServer(); });
 app.on('before-quit', stopServer);
 
 // --- IPC: storage location (used by the Setup → Storage panel) ------------

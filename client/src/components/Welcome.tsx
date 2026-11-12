@@ -65,7 +65,7 @@ const CONNECTIONS: {
     steps: [
       'Install Claude Code on this computer (or point the server at it by setting CLAUDE_BIN in server/.env).',
       'Open any AI feature in KevFin and click “Log in to Claude”, then type /login in the terminal that opens.',
-      'On Windows — or any OS — you can instead run “claude setup-token” in a terminal and paste the token into the login panel.',
+      'You can instead run “claude setup-token” in a terminal and paste the token into the login panel.',
     ],
     link: { href: 'https://docs.claude.com/en/docs/claude-code/overview', label: 'Install Claude Code →' },
   },

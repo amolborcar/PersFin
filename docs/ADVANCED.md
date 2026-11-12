@@ -1,69 +1,17 @@
 # KevFin — advanced guide
 
 The [main README](../README.md) covers installing the desktop app. This page is for
-everything else: running KevFin on a home server, other platforms, how the pieces
-work, and developing it.
+everything else: Intel Macs, how the pieces work, and developing it.
 
 > ⚠️ **KevFin has no login screen.** Keep it on your home network or behind
 > something like Tailscale — **don't expose it directly to the internet.**
 
-## Run on a NAS or home server (Docker)
+KevFin runs on macOS only. Docker, NAS and Windows support were removed.
 
-These steps are for a Synology NAS; other Docker hosts work the same way with
-`docker compose`. The fastest way onto a NAS is to **pull the pre-built image** — no terminal, no
-building on the box. (Each `v*` release publishes a multi-arch image to
-`ghcr.io/kxl3785/kevfin` via [`publish-image.yml`](../.github/workflows/publish-image.yml).)
+## Intel Mac
 
-1. In **File Station**, open the `docker` shared folder, create a folder `kevfin`,
-   and inside it a `data` folder.
-2. **Container Manager → Project → Create.** For *Source*, choose
-   **"Create docker-compose.yml"** and paste this:
-
-   ```yaml
-   services:
-     kevfin:
-       image: ghcr.io/kxl3785/kevfin:latest
-       container_name: kevfin
-       restart: unless-stopped
-       ports:
-         - "3001:3001"
-       volumes:
-         - /volume1/docker/kevfin/data:/app/data
-       environment:
-         - NODE_ENV=production
-         - DB_PATH=/app/data/kevfin.db
-         - KEVFIN_ENV_PATH=/app/data/kevfin.env
-   ```
-
-   (This is [`docker-compose.synology.yml`](../docker-compose.synology.yml), which
-   has the same content plus commented-out lines for the optional API keys.)
-3. Set the project path to `/volume1/docker/kevfin`, then **Next → Done**.
-4. Browse to **`http://<nas-ip>:3001`** and link your accounts from the in-app
-   **⚙ Setup** hub. All your keys (Plaid, SimpleFIN, Zillow, the Claude assistant
-   token) can be entered there — they're saved to the volume and survive updates.
-
-> ⚠️ KevFin has **no auth layer.** Reach it over your LAN or **Tailscale** only —
-> do not port-forward `3001` to the public internet.
-
-**Updating:** Container Manager → your project → **Build/Pull** (re-pulls
-`:latest`). Your database in `data/` is never touched.
-
-### Other deployment options
-
-KevFin is also packaged as a desktop app ([DESKTOP.md](../DESKTOP.md)). To **build
-from source on the NAS** instead of pulling (e.g. via a Portainer Git stack, the
-owner's own GitOps setup), see [DEPLOY-SYNOLOGY.md](../DEPLOY-SYNOLOGY.md); for the
-generic Docker / tarball walkthrough see [DEPLOY.md](../DEPLOY.md).
-
-## Intel Mac or Linux
-
-The ready-made download is for Apple-silicon Macs and Windows. On an Intel Mac or
-Linux you can either:
-
-- run the Docker image with [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-  using the same `docker-compose` file as the NAS setup above (change the volume
-  path to a folder on your computer), then open `http://localhost:3001`; or
-- run it from source (see [For developers](#for-developers)).
+The ready-made download is for Apple-silicon Macs. On an Intel Mac, run it from
+source (see [For developers](#for-developers)).
 
 ## Features in detail
 
@@ -210,7 +158,7 @@ credentials below only need to be set if you use Plaid-linked institutions.
 | `SEC_EDGAR_UA` | Advanced: override the whole SEC User-Agent (`Name email`). |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV` | Plaid credentials (only needed for Plaid-linked institutions). |
 | `CLAUDE_BIN` | Override path to the Claude Code binary (only if auto-detection fails). |
-| `DB_PATH` | Override the SQLite path (e.g. a Docker volume mount). |
+| `DB_PATH` | Override the SQLite path. |
 | `DAILY_SNAPSHOT` | Set `false` to disable the automatic midnight net-worth history point. |
 
 ### Demo data

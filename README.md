@@ -19,12 +19,8 @@ so your financial data is never uploaded anywhere.
 
 ### **[⬇️ Download KevFin](https://github.com/kxl3785/KevFin/releases/latest)**
 
-Scroll down to **Assets** and click the file for your computer:
-
-- **Mac:** the file ending in **`.dmg`**
-- **Windows:** the file ending in **`.exe`**
-
-![The two files to download](docs/screenshots/download.png)
+KevFin runs on macOS only. Scroll down to **Assets** and click the file ending
+in **`.dmg`**.
 
 > **Which Mac do I have?** Click the Apple menu  → **About This Mac**. If it
 > says **Chip: Apple M1** (or M2, M3, M4 and so on), you're set. Macs with an
@@ -45,15 +41,6 @@ Scroll down to **Assets** and click the file for your computer:
      Applications and choose **Open**, then **Open** again.
 
 You only need to do step 4 once.
-
-**On Windows**
-
-1. Double-click the `KevFin Setup` file you downloaded.
-2. If a blue box says **"Windows protected your PC,"** click **More info**, then
-   **Run anyway**. This appears because KevFin is a small independent app, not
-   because anything is wrong.
-3. Follow the installer. KevFin opens when it's done, and you'll find it in the
-   Start menu afterward.
 
 ### 3. Open KevFin
 
@@ -241,9 +228,8 @@ you saw.
 
 ## Other ways to run it
 
-Want KevFin running all the time on a home server or NAS (such as a Synology), so
-everyone in the house can open it in a web browser? Using an Intel Mac or Linux?
-Want to change the code? See the **[advanced guide](docs/ADVANCED.md)**.
+Using an Intel Mac, or want to change the code? See the
+**[advanced guide](docs/ADVANCED.md)**.
 
 ## Support
 

@@ -30,8 +30,6 @@ function claudePlatformPackage() {
   const map = {
     'darwin-arm64': '@anthropic-ai/claude-code-darwin-arm64',
     'darwin-x64': '@anthropic-ai/claude-code-darwin-x64',
-    'win32-x64': '@anthropic-ai/claude-code-win32-x64',
-    'win32-arm64': '@anthropic-ai/claude-code-win32-arm64',
   };
   return map[`${process.platform}-${process.arch}`] || null;
 }
@@ -56,13 +54,11 @@ const electronVersion = require(path.join(desktopDir, 'node_modules/electron/pac
   fs.copyFileSync(path.join(repoRoot, 'server/package-lock.json'), path.join(stagedServer, 'package-lock.json'));
 
   console.log('[stage] installing production server dependencies');
-  // shell:true so `npm` resolves to npm.cmd on Windows (Node refuses to spawn
-  // .cmd directly without it).
-  execFileSync('npm', ['ci', '--omit=dev'], { cwd: stagedServer, stdio: 'inherit', shell: true });
+  execFileSync('npm', ['ci', '--omit=dev'], { cwd: stagedServer, stdio: 'inherit' });
 
   console.log(`[stage] rebuilding native modules for Electron ${electronVersion}`);
   // @electron/rebuild v4 is ESM-only — load it with dynamic import from this CJS
-  // script. The programmatic API (vs the CLI shim) rebuilds the same on Windows.
+  // script.
   const { rebuild } = await import('@electron/rebuild');
   await rebuild({ buildPath: stagedServer, electronVersion, onlyModules: ['better-sqlite3'], force: true });
 
@@ -76,19 +72,16 @@ const electronVersion = require(path.join(desktopDir, 'node_modules/electron/pac
   } else {
     try {
       console.log(`[stage] bundling claude ${CLAUDE_VERSION} (${pkg})`);
-      // Use the system temp dir (no spaces) — npm pack's --pack-destination breaks
-      // on a path with spaces under shell:true (which we need for npm.cmd on Windows).
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kevfin-claude-'));
-      execFileSync('npm', ['pack', `${pkg}@${CLAUDE_VERSION}`, '--pack-destination', tmp], { stdio: 'inherit', shell: true });
+      execFileSync('npm', ['pack', `${pkg}@${CLAUDE_VERSION}`, '--pack-destination', tmp], { stdio: 'inherit' });
       const tgz = fs.readdirSync(tmp).find(f => f.endsWith('.tgz'));
       if (!tgz) throw new Error('npm pack produced no tarball');
       execFileSync('tar', ['xzf', path.join(tmp, tgz), '-C', tmp], { stdio: 'inherit' });
-      const binName = process.platform === 'win32' ? 'claude.exe' : 'claude';
-      const srcBin = [path.join(tmp, 'package', binName), path.join(tmp, 'package', 'claude')].find(p => fs.existsSync(p));
-      if (!srcBin) throw new Error('claude binary not found in package');
-      const destBin = path.join(claudeDir, binName);
+      const srcBin = path.join(tmp, 'package', 'claude');
+      if (!fs.existsSync(srcBin)) throw new Error('claude binary not found in package');
+      const destBin = path.join(claudeDir, 'claude');
       fs.copyFileSync(srcBin, destBin);
-      if (process.platform !== 'win32') fs.chmodSync(destBin, 0o755);
+      fs.chmodSync(destBin, 0o755);
       fs.rmSync(tmp, { recursive: true, force: true });
       console.log(`[stage] bundled claude -> ${destBin}`);
     } catch (e) {

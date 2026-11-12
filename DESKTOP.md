@@ -1,9 +1,10 @@
 # KevFin desktop app
 
-A standalone desktop build of KevFin (Electron) for people who don't have a NAS —
-no Docker, no terminal. It bundles the server + client and opens a native window.
-Everything stays local; the storage location is user-choosable (e.g. a cloud-synced
-or NAS folder) so data can be backed up or moved between machines.
+A standalone macOS desktop build of KevFin (Electron) — no terminal needed. It
+bundles the server + client and opens a native window. Everything stays local;
+the storage location is user-choosable (e.g. a cloud-synced or NAS folder) so
+data can be backed up or moved between machines. macOS is the only supported
+platform.
 
 ## Run it from source (dev)
 
@@ -17,16 +18,13 @@ at the server's port (3001, or the next free one).
 ## Build installers
 
 ```bash
-npm run desktop:dist     # builds, stages, and packages for the current OS
+npm run desktop:dist     # builds, stages, and packages the macOS app
 ```
 
-Output lands in `desktop/dist-app/`:
-- **macOS** → `KevFin-<version>-arm64.dmg`
-- **Windows** → `KevFin Setup <version>.exe` (NSIS installer)
+Output lands in `desktop/dist-app/` as `KevFin-<version>-arm64.dmg`.
 
-These are **unsigned**. On first launch:
-- **macOS** — right-click the app → **Open** → **Open** (one-time Gatekeeper bypass).
-- **Windows** — "Windows protected your PC" → **More info** → **Run anyway**.
+The app is **unsigned**. On first launch, right-click the app → **Open** →
+**Open** (one-time Gatekeeper bypass).
 
 ### How packaging works (the moving parts)
 
@@ -40,16 +38,15 @@ These are **unsigned**. On first launch:
 > better-sqlite3 must be **≥ 12** — older versions don't compile against
 > Electron 33's V8 headers.
 
-## Build for both macOS and Windows (CI)
+## Build in CI
 
-A native module can't be reliably cross-built, so Windows builds run on a Windows
-runner. The **Desktop build** workflow (`.github/workflows/desktop-build.yml`)
-builds both and uploads the installers as artifacts:
+The **Desktop build** workflow (`.github/workflows/desktop-build.yml`) builds the
+macOS app on a macOS runner and uploads the `.dmg` as an artifact:
 
 - Run it from the repo's **Actions → Desktop build → Run workflow**, or
 - push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
 
-Download the `KevFin-macos` / `KevFin-windows` artifacts from the run.
+Download the `KevFin-macos` artifact from the run.
 
 ## Choosing where data lives
 
