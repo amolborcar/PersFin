@@ -84,3 +84,30 @@ describe('migration 8 (remove-real-estate)', () => {
     expect(metaKeys).not.toContain('last_real_estate_refresh');
   });
 });
+
+// Migration 9 removes the Mortgage budget category the same way the UI removes one.
+describe('migration 9 (remove-mortgage-category)', () => {
+  it('drops the category, its target and rules, and moves imported rows to the catch-all', () => {
+    const db = new Database(':memory:');
+    for (const m of MIGRATIONS.filter(m => m.version <= 8)) m.up(db);
+    // An older database still lists Mortgage (earlier releases seeded it).
+    db.prepare(`INSERT OR IGNORE INTO budget_categories (name, sort) VALUES ('Mortgage', 99)`).run();
+
+    db.prepare(`INSERT INTO budget_targets (category, monthly_limit) VALUES ('Mortgage', 2800), ('Rent', 2400)`).run();
+    const rule = db.prepare(`INSERT INTO rules (kind, merchant, category) VALUES ('merchant', ?, ?)`);
+    rule.run('rocket mortgage', 'Mortgage');
+    rule.run('avalon apartments', 'Rent');
+    const imp = db.prepare(`INSERT INTO imported_txns (id, date, amount, payee, merchant, account, category) VALUES (?, '2026-01-03', -1, 'x', 'x', 'a', ?)`);
+    imp.run('i1', 'Mortgage');
+    imp.run('i2', 'Rent');
+
+    MIGRATIONS.find(m => m.version === 9)!.up(db);
+
+    expect(db.prepare(`SELECT 1 FROM budget_categories WHERE name = 'Mortgage'`).get()).toBeUndefined();
+    expect(db.prepare(`SELECT 1 FROM budget_categories WHERE name = 'Rent'`).get()).toBeTruthy();
+    expect(db.prepare(`SELECT category FROM budget_targets ORDER BY category`).all()).toEqual([{ category: 'Rent' }]);
+    expect(db.prepare(`SELECT category FROM rules ORDER BY category`).all()).toEqual([{ category: 'Rent' }]);
+    expect(db.prepare(`SELECT id, category FROM imported_txns ORDER BY id`).all())
+      .toEqual([{ id: 'i1', category: 'Miscellaneous' }, { id: 'i2', category: 'Rent' }]);
+  });
+});

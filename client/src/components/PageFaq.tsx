@@ -108,7 +108,7 @@ function buildFaq(meta: AssumptionsMeta | null): Record<View, PageFaqContent> {
         },
         {
           q: 'How is "recurring" decided?',
-          a: 'Fixed commitments (mortgage, bills) always surface. Flexible items must appear in at least two distinct months and pass a subscription-quality filter (consistent merchant and amount) before they’re counted as recurring — so one-off purchases don’t show up.',
+          a: 'Fixed commitments (rent, bills) always surface. Flexible items must appear in at least two distinct months and pass a subscription-quality filter (consistent merchant and amount) before they’re counted as recurring — so one-off purchases don’t show up.',
         },
         {
           q: 'How is the monthly amount for a recurring item computed?',

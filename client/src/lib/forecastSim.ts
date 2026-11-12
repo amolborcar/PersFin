@@ -253,7 +253,7 @@ export function runForecastSim(input: SimInput): SimResult {
     // (lower) retirement rate rather than the working effective rate.
     const taxableIncome = Math.max(0, grossN - preN - hsaN + 0.85 * ssN);
     const tax = (anyWorking ? A.effTaxRate : A.retireTaxRate) * taxableIncome;
-    // Housing costs (rent, mortgage payments) are part of the seeded spending.
+    // Housing costs (rent) are part of the seeded spending.
     const net = grossN + ssN + windfallN - tax - (preN + hsaN + rothN + c529N + taxN) - spendN - oneTimeN;
     return { f, age0, net, anyWorking, pretaxAdd: preN, employerAdd: employerN, rothAdd: rothN, hsaAdd: hsaN, c529Add: c529N, taxableAdd: taxN, collegeNom, oneTimeN, windfallN, grossN, ssN, spendN };
   });

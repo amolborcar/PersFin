@@ -58,7 +58,7 @@ export function getCategoryGroups(): (Omit<CatGroup, 'categories'> & { categorie
 export function getGroupNames(): string[] { return [...GROUP_ORDER]; }
 
 
-const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Mortgage', 'Miscellaneous']); // can't be removed
+const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Miscellaneous']); // can't be removed
 
 // Display overrides (rename + emoji) keyed by canonical category name. Applied at
 // output boundaries; inputs are canonicalised back before touching stored data.

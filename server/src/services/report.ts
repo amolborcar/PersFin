@@ -94,8 +94,8 @@ export interface MonthCash {
 }
 
 // Pure: fold per-month budget summaries (null = no data that month) into the
-// quarter's cash-flow figures. getBudget's spending already includes mortgage
-// and other loan payments, so income − spending equals cash actually saved,
+// quarter's cash-flow figures. getBudget's spending already includes rent and
+// loan payments, so income − spending equals cash actually saved,
 // which is what the net-worth waterfall needs.
 export function aggregateCashflow(
   keys: string[], months: (MonthCash | null)[], label: (cat: string) => string, topN = 6,
@@ -490,7 +490,7 @@ export async function generateQuarterlyReport(now = new Date()): Promise<string>
     (yoyPct != null ? `, year-over-year ${(yoyPct * 100).toFixed(1)}%` : ', year-over-year not available (insufficient history)') + '.\n' +
     (attribution ? `Change drivers: saved ${fmtSigned(attribution.saved)}, market & other ${fmtSigned(attribution.market)}.\n` : '') +
     (cfOk
-      ? `Cash flow (spending includes mortgage payments): income $${Math.round(cashflow.income).toLocaleString('en-US')}, spending $${Math.round(cashflow.spending).toLocaleString('en-US')}, saved $${Math.round(cashflow.saved).toLocaleString('en-US')}` +
+      ? `Cash flow: income $${Math.round(cashflow.income).toLocaleString('en-US')}, spending $${Math.round(cashflow.spending).toLocaleString('en-US')}, saved $${Math.round(cashflow.saved).toLocaleString('en-US')}` +
         (cashflow.savingsRate != null ? ` (${Math.round(cashflow.savingsRate * 100)}% savings rate)` : '') + '.\n'
       : 'Cash flow: not available for this quarter.\n') +
     (alloc.slices.length ? `Allocation (current): ${alloc.slices.map(x => `${x.label} ${x.pct.toFixed(0)}%`).join(', ')}.\n` : '') +

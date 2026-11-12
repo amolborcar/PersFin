@@ -84,7 +84,7 @@ function extractPrompt(fileName: string): string {
 
 Return a JSON object exactly matching this TypeScript type:
 {
-  "docType": string,   // e.g. "brokerage statement", "receipt", "pay stub", "mortgage statement"
+  "docType": string,   // e.g. "brokerage statement", "receipt", "pay stub", "loan statement"
   "notes": string,     // one short caveat, or "" if none
   "proposals": Array<
     | { "table": "manual_assets", "summary": string, "confidence": number,
@@ -104,7 +104,7 @@ Return a JSON object exactly matching this TypeScript type:
 Pick the table that best fits the document:
 - An end-of-period balance for an investment or bank account → "manual_assets" (preferred for a single balance) or "accounts".
 - Individual purchases/payments (e.g. a receipt or a transaction list) → one "imported_txns" entry per transaction.
-- A mortgage or other loan statement → one "accounts" entry with category "credit" and the amount owed as a NEGATIVE balance.
+- A loan statement → one "accounts" entry with category "credit" and the amount owed as a NEGATIVE balance.
 - A tax return (Form 1040), a W-2, or a year-end tax summary → a SINGLE "forecast" entry capturing retirement-planning inputs (see below). Do not also emit transactions for it.
 - A 1099-B, a realized-gains report, or a brokerage POSITIONS/holdings statement that lists cost basis per security → one "cost_basis" entry per security. Use these for the per-security TOTAL cost basis; do NOT also emit "manual_assets"/"accounts" balances for the same securities.
 

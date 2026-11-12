@@ -112,7 +112,7 @@ function waterfallBlock(m: ReportModel): string {
   const input = {
     startLabel: m.startLabel, endLabel: m.endLabel, start: a.start, end: a.end,
     steps: [
-      { label: 'Saved', amount: a.saved, title: 'Income minus spending (including mortgage payments) for the quarter.' },
+      { label: 'Saved', amount: a.saved, title: 'Income minus spending for the quarter.' },
       { label: 'Market & other', amount: a.market, title: 'The remainder: investment returns, untracked transfers and rounding.' },
     ],
   };
@@ -178,7 +178,7 @@ function cashflowBlock(m: ReportModel): string {
     return `<section>${head}${unavailable(cf.status, 'Not available for this quarter — no income or spending was recorded.')}</section>`;
   }
   const rate = cf.savingsRate != null ? ` (${Math.round(cf.savingsRate * 100)}%)` : '';
-  const sub = `Income ${money(cf.income)} − spending ${money(cf.spending)} = saved ${money(cf.saved)}${rate} · spending includes mortgage payments`;
+  const sub = `Income ${money(cf.income)} − spending ${money(cf.spending)} = saved ${money(cf.saved)}${rate}`;
   const chart = groupedBarsSvg(cf.months.map(x => ({ label: x.label, a: x.income, b: x.spending })), 'Income', 'Spending');
   const max = Math.max(...cf.categories.map(c => c.amount), cf.other, 1);
   const bar = (label: string, amount: number, fill: string) =>

@@ -109,7 +109,7 @@ for (let back = 14; back >= 0; back--) {
   on(28, () => tx(checking, dayOf(y, m, 28), 3120.44, 'ACME CORP PAYROLL'));
 
   // Recurring bills — checking
-  on(3, () => tx(checking, dayOf(y, m, 3), -2800.00, 'ROCKET MORTGAGE PMT'));
+  on(3, () => tx(checking, dayOf(y, m, 3), -2800.00, 'AVALON APARTMENTS RENT'));
   on(8, () => tx(checking, dayOf(y, m, 8), -jitter(132, 0.18), 'PG&E ELECTRIC'));
   on(12, () => tx(checking, dayOf(y, m, 12), -89.99, 'COMCAST XFINITY'));
   on(18, () => tx(checking, dayOf(y, m, 18), -85.00, 'VERIZON WIRELESS'));
@@ -164,7 +164,7 @@ db.prepare('INSERT INTO manual_assets (name, category, value) VALUES (?, ?, ?)')
 db.exec(`CREATE TABLE IF NOT EXISTS budget_targets (category TEXT PRIMARY KEY, monthly_limit REAL NOT NULL)`);
 const target = db.prepare('INSERT OR REPLACE INTO budget_targets (category, monthly_limit) VALUES (?, ?)');
 for (const [c, v] of [
-  ['Mortgage', 2800], ['Gas & Electric', 180], ['Internet & Phone', 200], ['Groceries', 850],
+  ['Rent', 2800], ['Gas & Electric', 180], ['Internet & Phone', 200], ['Groceries', 850],
   ['Restaurants & Bars', 450], ['Coffee Shops', 90], ['Gas', 220], ['Shopping', 400],
   ['Subscriptions', 80], ['Entertainment & Recreation', 120], ['Fitness', 185], ['Insurance', 150],
   ['Travel & Vacation', 500], ['Medical', 120], ['Clothing', 150], ['Charity', 100],

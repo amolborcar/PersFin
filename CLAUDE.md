@@ -122,4 +122,3 @@ CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`. Keep it gre
 - Budgeting (largest file, ~1.7k lines): `services/budget.ts`
 - Recurring-bill detection: `services/recurring.ts`
 - Forecast (Monte Carlo, client-side, memoized): `client/src/pages/Forecast.tsx`
-- Mortgage/amortization: `util/amortization.ts`, `services/mortgage.ts`

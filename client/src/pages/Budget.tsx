@@ -31,7 +31,7 @@ interface BudgetData {
 }
 interface ImportedTxn { id: string; date: string; amount: number; payee: string; account: string; category: string | null; accepted: boolean }
 
-const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Mortgage', 'Miscellaneous']);
+const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Miscellaneous']);
 
 // Map a transaction row to the shared detail-popup shape.
 const txnToDetail = (t: BudgetTxn): TxnDetail => ({

@@ -17,7 +17,7 @@ export const TAXONOMY: CatGroup[] = [
     { name: 'Paychecks', emoji: '💵' }, { name: 'Other Income', emoji: '💰' }, { name: 'Dividends & Capital Gains', emoji: '📈' },
   ] },
   { name: 'Housing', color: '#6c8fff', categories: [
-    { name: 'Mortgage', emoji: '🏦' }, { name: 'Rent', emoji: '🏠' }, { name: 'Home Improvement', emoji: '🛠️' }, { name: 'Home Services', emoji: '🧹' },
+    { name: 'Rent', emoji: '🏠' }, { name: 'Home Improvement', emoji: '🛠️' }, { name: 'Home Services', emoji: '🧹' },
     // Bills & Utilities folded into Housing.
     { name: 'Gas & Electric', emoji: '⚡' }, { name: 'Water', emoji: '💧' }, { name: 'Internet & Phone', emoji: '📶' }, { name: 'Subscriptions', emoji: '🔁' },
   ] },
@@ -54,7 +54,7 @@ export const CATEGORIES: string[] = TAXONOMY.flatMap(g => g.categories.map(c => 
 const EMOJI_HINTS: [RegExp, string][] = [
   [/grocer|food ?market|supermarket/i, '🛒'], [/restaurant|dining|\beat|\bbar\b|brunch|lunch|dinner/i, '🍽️'], [/coffee|cafe|\btea\b|boba/i, '☕'], [/alcohol|liquor|wine|beer|brewery/i, '🍷'],
   [/\bgas\b|fuel|petrol/i, '⛽'], [/\bcar\b|auto|vehicle/i, '🚗'], [/transit|\bbus\b|train|subway|metro/i, '🚆'], [/taxi|ride ?share|uber|lyft/i, '🚕'], [/park|toll/i, '🅿️'], [/flight|airline|\bair\b|travel|vacation|\btrip\b/i, '✈️'], [/hotel|lodging|airbnb/i, '🏨'],
-  [/rent|mortgage|\bhome\b|hous|apartment/i, '🏠'], [/improv|repair|hardware|renovat/i, '🛠️'], [/clean|maid|\blawn|pest|\bhvac\b/i, '🧹'],
+  [/rent|\bhome\b|hous|apartment/i, '🏠'], [/improv|repair|hardware|renovat/i, '🛠️'], [/clean|maid|\blawn|pest|\bhvac\b/i, '🧹'],
   [/health|medical|doctor|clinic|hospital/i, '🏥'], [/dental|dentist|teeth/i, '🦷'], [/\bgym\b|fitness|exercise|yoga|pilates/i, '🏋️'], [/pharm|\bdrug|prescription/i, '💊'],
   [/shop|store|retail|amazon|merchand/i, '🛍️'], [/cloth|apparel|fashion|shoe/i, '👕'], [/electron|\btech\b|gadget|computer|phone\b/i, '💻'], [/furnitur|home ?goods|decor/i, '🛋️'],
   [/child ?care|daycare|\bkid|baby|nanny/i, '🧸'], [/school|educat|college|tuition|class/i, '🎓'], [/\bpet|\bdog|\bcat\b|\bvet\b/i, '🐾'],

@@ -66,7 +66,7 @@ function buildFeed(): FeedAcct[] {
     tx(checking, d(15), 3120.44, 'REFORMED RADIOLO PAYROLL');
     if (!inJune || 28 <= 23) tx(checking, d(28), 3120.44, 'REFORMED RADIOLOGY DIRECT DEP');
     // Bills and spending.
-    tx(checking, d(3), -2800, 'ROCKET MORTGAGE PMT');
+    tx(checking, d(3), -2800, 'AVALON APARTMENTS RENT');
     tx(checking, d(8), -132.55, 'PG&E ELECTRIC');
     tx(card, d(5), -15.49, 'NETFLIX');
     tx(card, d(4), -128.3, 'WHOLE FOODS MARKET');

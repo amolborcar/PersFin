@@ -354,13 +354,11 @@ const TRANSFER_RE = /autopay|online payment|\btransfer\b|moneyline|brokerage ser
 // the TRANSFER_RE check above.
 const P2P_RE = /\bzelle\b|\bvenmo\b|cash ?app/i;
 
-const MORTGAGE_RE = /\bmortgage\b|home loan|\bheloc\b|property payment|home equity|loancare|mr\.?\s*cooper|pennymac|quicken loan|rocket mortgage|newrez|nationstar|shellpoint|phh mortgage|sps servicing|carrington mortgage/i;
-
-// Liability accounts — credit cards, loans, mortgages, lines of credit. A
+// Liability accounts — credit cards, loans, lines of credit. A
 // POSITIVE amount here is a payment/credit (money coming IN to settle the
 // balance), never real income, so it must not inflate income.
-const LIABILITY_ACCT_RE = /mortgage|home ?loan|\bheloc\b|line of credit|\bloan\b|credit card|\bvisa\b|mastercard|\bamex\b|discover|sapphire|freedom|venture|palladium|signature|\bcard\b/i;
-// Credit-card accounts specifically (subset of liabilities, excluding loans/HELOCs)
+const LIABILITY_ACCT_RE = /line of credit|\bloan\b|credit card|\bvisa\b|mastercard|\bamex\b|discover|sapphire|freedom|venture|palladium|signature|\bcard\b/i;
+// Credit-card accounts specifically (subset of liabilities, excluding loans)
 // — a positive amount here is a card payment, labeled Credit Card Payment.
 const CC_ACCT_RE = /credit card|\bvisa\b|mastercard|\bamex\b|american express|discover|sapphire|freedom|venture|palladium|signature|\bcard\b/i;
 
@@ -370,7 +368,6 @@ export function autoCategory(payee: string, description: string, amount: number)
   // P2P (Zelle/Venmo/Cash App) bypasses the transfer rule so it stays visible and
   // categorizable instead of being hidden as an internal move.
   if (!P2P_RE.test(text) && TRANSFER_RE.test(text)) return 'Transfers';
-  if (MORTGAGE_RE.test(text)) return 'Mortgage';
   if (amount > 0) {
     if (PAYCHECK_RE.test(text)) return 'Paychecks';
     if (DIVIDEND_RE.test(text)) return 'Dividends & Capital Gains';

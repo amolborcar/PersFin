@@ -458,6 +458,20 @@ function removeRealEstate(db: Db) {
   `);
 }
 
+// The Mortgage budget category was removed (the owner rents; Rent is the housing
+// category). Same clean-up as removing a category in the UI — drop it from the
+// active list, its target, and every categorization rule pointing at it, so its
+// transactions fall back to automatic categorization — plus imported rows that
+// carry it, which go to the catch-all.
+function removeMortgageCategory(db: Db) {
+  db.exec(`
+    DELETE FROM budget_categories WHERE name = 'Mortgage';
+    DELETE FROM budget_targets WHERE category = 'Mortgage';
+    DELETE FROM rules WHERE kind IN ('merchant', 'base', 'smart') AND category = 'Mortgage';
+    UPDATE imported_txns SET category = 'Miscellaneous' WHERE category = 'Mortgage';
+  `);
+}
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'baseline', up: baseline },
   { version: 2, name: 'feed-transactions-table', up: feedTransactionsTable },
@@ -467,6 +481,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 6, name: 'report-cache-table', up: reportCacheTable },
   { version: 7, name: 'remove-simplefin', up: removeSimpleFin },
   { version: 8, name: 'remove-real-estate', up: removeRealEstate },
+  { version: 9, name: 'remove-mortgage-category', up: removeMortgageCategory },
 ];
 
 // Apply every migration newer than the database's user_version, each in its own

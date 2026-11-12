@@ -112,9 +112,9 @@ describe('savings wording', () => {
 
 describe('aggregateCashflow', () => {
   const months = [
-    { income: 5000, spending: 3000, byCategory: [{ category: 'Groceries', spent: 800 }, { category: 'Travel', spent: 1300 }, { category: 'Mortgage', spent: 1000 }] },
+    { income: 5000, spending: 3000, byCategory: [{ category: 'Groceries', spent: 800 }, { category: 'Travel', spent: 1300 }, { category: 'Rent', spent: 1000 }] },
     null,
-    { income: 5000, spending: 2000, byCategory: [{ category: 'Groceries', spent: 400 }, { category: 'Zero', spent: 0 }, { category: 'Gas', spent: 600 }, { category: 'Mortgage', spent: 1000 }] },
+    { income: 5000, spending: 2000, byCategory: [{ category: 'Groceries', spent: 400 }, { category: 'Zero', spent: 0 }, { category: 'Gas', spent: 600 }, { category: 'Rent', spent: 1000 }] },
   ];
   const cf = aggregateCashflow(['2026-04', '2026-05', '2026-06'], months, c => c.toUpperCase(), 2);
   it('sums income and spending so saved = income - spending', () => {
@@ -131,8 +131,8 @@ describe('aggregateCashflow', () => {
       { label: 'Jun', income: 5000, spending: 2000 },
     ]);
   });
-  it('ranks categories (incl. Mortgage) and reconciles "everything else"', () => {
-    expect(cf.categories).toEqual([{ label: 'MORTGAGE', amount: 2000 }, { label: 'TRAVEL', amount: 1300 }]);
+  it('ranks categories (incl. Rent) and reconciles "everything else"', () => {
+    expect(cf.categories).toEqual([{ label: 'RENT', amount: 2000 }, { label: 'TRAVEL', amount: 1300 }]);
     expect(cf.other).toBe(5000 - 3300);
   });
   it('is empty (not a $0 quarter) when no month has data', () => {

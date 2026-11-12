@@ -717,7 +717,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
   const yearNow = new Date().getFullYear(); // for the chart's age→year axis labels
   // Preceding years shown on the chart (modeled back-projection). The axis starts
   // at startAge; events can be placed back to there to set past life events whose
-  // forward implications (a mortgage, recurring costs, a kid) the model carries.
+  // forward implications (recurring costs, a kid) the model carries.
   const [historyYears, setHistoryYears] = usePersistentState('mon.fcHistoryYears', 0);
   const startAge = Math.max(0, currentAge0 - Math.max(0, historyYears));
 
@@ -1213,7 +1213,7 @@ export default function Forecast({ onNavigate, privacy, onTogglePrivacy }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px' }}>Forecast</h1>
         <InfoTip width={320} text={
-          'How this forecast works. Your starting point is your latest tracked net worth — investable accounts, sorted into tax buckets: taxable, pre-tax, Roth, HSA, 529. Income and spending are seeded from your budget history (housing costs such as rent or mortgage payments are part of that spending); document imports (e.g. a tax return) can fill income, filing status, dependents, and your effective tax rate. It then runs a Monte Carlo simulation — hundreds of randomized market paths — and charts the median outcome and its range, shown in today’s or future dollars.'
+          'How this forecast works. Your starting point is your latest tracked net worth — investable accounts, sorted into tax buckets: taxable, pre-tax, Roth, HSA, 529. Income and spending are seeded from your budget history (including rent); document imports (e.g. a tax return) can fill income, filing status, dependents, and your effective tax rate. It then runs a Monte Carlo simulation — hundreds of randomized market paths — and charts the median outcome and its range, shown in today’s or future dollars.'
         } />
         <span style={{ color: 'var(--muted)', fontSize: 13.5 }}>{RUNS} simulated market paths · drag life events on the chart to move them, click to edit</span>
         {/* Reset is destructive, so it lives in a menu rather than beside the title. */}

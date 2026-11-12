@@ -13,7 +13,7 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 |---|---|
 | 0 Baseline | Done. Build passes; tests pass (server 383, client 153). |
 | 1 SimpleFIN → Plaid | Done. Build passes; tests pass (server 388, client 153). |
-| 2 Remove real estate | Done. Build passes; tests pass (server 347, client 143). |
+| 2 Remove real estate | Done, including the Mortgage category (migration 9). Build passes; tests pass (server 349, client 143). |
 | 3–9 | Not started |
 
 Update this table at the end of each phase.
@@ -24,7 +24,7 @@ Update this table at the end of each phase.
 |---|---|---|
 | 1 | Investments | Keep. Replace SimpleFIN with Plaid Investments (`investmentsHoldingsGet`, `investmentsTransactionsGet`). |
 | 2 | Budget model | Keep category targets. Zero-based budgeting is a later project. |
-| 3 | Housing | Remove real-estate tracking. Spending categories come from the personal category file. |
+| 3 | Housing | Remove real-estate tracking and the Mortgage category. The owner rents; Rent is the housing category. Spending categories come from the personal category file. |
 | 4 | Push | ntfy, self-hosted on the Mac mini, reached over Tailscale. iOS wake-ups go through the ntfy.sh upstream relay, which receives only a message ID. |
 | 5 | Email | The user's own SMTP account with an app password, over TLS. |
 | 6 | Always on | macOS launchd services on the Mac mini. Remove Docker and NAS support. |
@@ -113,23 +113,21 @@ Update this table at the end of each phase.
    `shared/apiTypes.ts`, `keys.ts` (`OPENWEBNINJA_KEY`, `APILLOW_KEY`), the
    `properties` proposal in `ingest.ts`, and home equity in `Forecast.tsx` and
    `lib/forecastSim.ts`.
-4. Count mortgage payments as normal spending. The budget used to leave them
-   out because the home model counted them through home equity and the
-   Forecast's housing outflow; without that model they must be spending, or
-   they disappear from the budget and the Forecast. Also remove the Budget
-   "Housing carry" card, the mortgage exclusion in recurring bills, and the
-   `mortgage` fields in the budget and cash-flow APIs.
-   `MORTGAGE_RE` (auto-category for mortgage payments) and the liability-account
-   logic stay; they are about categories and account types, not property
-   tracking. Phase 4 replaces the auto-categories.
+4. Remove the Mortgage budget category: the owner rents and tracks rent
+   (category Rent). Remove the special handling that kept mortgage payments
+   out of spending, the `MORTGAGE_RE` auto-category, the mortgage terms in the
+   liability-account pattern, the Budget "Housing carry" card, the mortgage
+   exclusion in recurring bills, and the `mortgage` fields in the budget and
+   cash-flow APIs. Migration 9 removes the category from existing databases
+   the same way the UI removes a category (rules and target deleted, imported
+   rows moved to Miscellaneous).
 5. Do not increase `CURRENT_BACKFILL_VERSION`. Migration 8 sets each stored
    day's `net_worth` to its `accounts_total`, which is exact; a version bump
    would instead overwrite observed history with estimates.
 6. Verify: the remaining `real estate` mentions are the REIT asset class in the
    allocation view, old migrations, and comments. Build and tests pass.
-   The golden budget snapshots change only by mortgage effects (spending +
-   mortgage, Mortgage row no longer excluded) and removed `housing`/`mortgage`
-   fields.
+   The golden budget fixture's housing payment is now rent; the snapshots
+   change by that (and by the removed `housing`/`mortgage` fields).
 
 ## Phase 3: macOS only
 
@@ -195,10 +193,7 @@ Update this table at the end of each phase.
    `budget_categories` becomes a cache.
 6. When a category with transactions or rules is deleted or renamed, move them
    to `fallback` and show a warning.
-7. Remove the hard-coded special cases for "Mortgage" (protected category in
-   `categories.ts` and `Budget.tsx`, `MORTGAGE_RE` auto-category). With a
-   personal file, any category can be removed.
-8. Tests: validation, missing file, rename and delete of rules.
+7. Tests: validation, missing file, rename and delete of rules.
 
 ## Phase 5: AI categorization
 
