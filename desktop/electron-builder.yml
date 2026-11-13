@@ -1,6 +1,6 @@
-appId: com.kevinliu.kevfin
-productName: KevFin
-copyright: KevFin
+appId: com.amolborcar.persfin
+productName: PersFin
+copyright: PersFin
 
 directories:
   output: dist-app

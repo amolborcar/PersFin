@@ -2,7 +2,7 @@
 
 Guidance for Claude Code when working in this repository.
 
-## What KevFin is
+## What PersFin is
 
 A **self-hosted personal net-worth tracker**. It pulls bank/brokerage/credit
 accounts plus real estate into one private dashboard, then layers on allocation
@@ -19,8 +19,8 @@ the phases in order, and the status of each phase. Sections of this file that
 conflict with the plan (SimpleFIN, real estate, Docker, Windows) describe the
 old app and will be updated in Phase 9.
 
-The repository is independent (no longer a fork of `kxl3785/KevFin`). Open PRs
-against `amolborcar/PersFin` only.
+The repository is independent (it is no longer a fork). Open PRs against
+`amolborcar/PersFin` only.
 
 ## Architecture
 
@@ -62,7 +62,7 @@ Install deps: `npm run install:all` (installs both server and client).
 ### Demo / safe test data
 
 Never test against real data. The seeder **refuses to run unless `DB_PATH` is
-set**, so it cannot overwrite `data/kevfin.db`:
+set**, so it cannot overwrite `data/persfin.db`:
 
 ```bash
 cd server
@@ -108,7 +108,7 @@ CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`. Keep it gre
   killed on timeout / client disconnect. Preserve this isolation.
 - **No authentication layer exists.** The app is meant for LAN / Tailscale only.
   `/api` refuses non-local Host names and cross-site browser requests
-  (`server/src/localOrigin.ts`); extra hostnames go in `KEVFIN_ALLOWED_HOSTS`.
+  (`server/src/localOrigin.ts`); extra hostnames go in `PERSFIN_ALLOWED_HOSTS`.
 - `data/` is git-ignored; never commit the database or backups.
 - Commits use the configured GitHub noreply author email (already set in git config).
 

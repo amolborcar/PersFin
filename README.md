@@ -1,13 +1,13 @@
-# KevFin
+# PersFin
 
 **All your money in one place, and it stays on your computer.**
 
-KevFin is a free app that puts your bank accounts, investments, credit cards and
+PersFin is a free app that puts your bank accounts, investments, credit cards and
 home value on one screen. It shows your net worth over time, where your money goes
 each month, and whether you're on track to retire. It runs on your own computer,
 so your financial data is never uploaded anywhere.
 
-![The KevFin dashboard](docs/screenshots/dashboard.png)
+![The PersFin dashboard](docs/screenshots/dashboard.png)
 
 <sub>Every number in these pictures is made-up demo data.</sub>
 
@@ -17,9 +17,9 @@ so your financial data is never uploaded anywhere.
 
 ### 1. Download
 
-### **[⬇️ Download KevFin](https://github.com/kxl3785/KevFin/releases/latest)**
+### **[⬇️ Download PersFin](https://github.com/amolborcar/PersFin/releases/latest)**
 
-KevFin runs on macOS only. Scroll down to **Assets** and click the file ending
+PersFin runs on macOS only. Scroll down to **Assets** and click the file ending
 in **`.dmg`**.
 
 > **Which Mac do I have?** Click the Apple menu  → **About This Mac**. If it
@@ -31,18 +31,18 @@ in **`.dmg`**.
 **On a Mac**
 
 1. Double-click the `.dmg` file you downloaded.
-2. Drag the **KevFin** icon into the **Applications** folder.
-3. Open **Applications** and double-click **KevFin**.
+2. Drag the **PersFin** icon into the **Applications** folder.
+3. Open **Applications** and double-click **PersFin**.
 4. The first time, your Mac may say it can't check the app for malware. That's
-   because KevFin isn't sold through the App Store. To open it anyway:
+   because PersFin isn't sold through the App Store. To open it anyway:
    - Open **System Settings → Privacy & Security**, scroll down, and click
-     **Open Anyway** next to the KevFin message.
-   - On older versions of macOS, you can instead right-click KevFin in
+     **Open Anyway** next to the PersFin message.
+   - On older versions of macOS, you can instead right-click PersFin in
      Applications and choose **Open**, then **Open** again.
 
 You only need to do step 4 once.
 
-### 3. Open KevFin
+### 3. Open PersFin
 
 A welcome guide walks you through the basics the first time you open it. You can
 bring it back any time from the **⚙ gear** in the top-right corner.
@@ -53,7 +53,7 @@ bring it back any time from the **⚙ gear** in the top-right corner.
 
 ## Connect your accounts
 
-KevFin needs a "connector" service to read your balances and transactions from
+PersFin needs a "connector" service to read your balances and transactions from
 your bank. You only need **one** of these:
 
 | | **SimpleFIN** (easiest) | **Plaid** (free) |
@@ -63,7 +63,7 @@ your bank. You only need **one** of these:
 | Works with | Most US banks and brokerages | Most US banks and brokerages, sometimes ones SimpleFIN can't reach |
 
 You sign up with the connector yourself, so the connection belongs to you, not to
-KevFin.
+PersFin.
 
 ### Option A: SimpleFIN
 
@@ -71,7 +71,7 @@ KevFin.
    and connect your banks there.
 2. On your **[SimpleFIN account page](https://beta-bridge.simplefin.org/my-account)**,
    click to create a **setup token**, then copy it.
-3. In KevFin, go to the **Dashboard**, scroll to **Financial Accounts**, and click
+3. In PersFin, go to the **Dashboard**, scroll to **Financial Accounts**, and click
    **Manage connections**.
 4. Click **+ SimpleFIN**, paste the token, and click **Connect**.
 
@@ -85,14 +85,14 @@ Your accounts appear in a few seconds.
    **production** access (Plaid allows it for personal use).
 2. In Plaid, open **[Developers → Keys](https://dashboard.plaid.com/developers/keys)**
    and copy your **Client ID** and **production Secret**.
-3. In KevFin, go to **Dashboard → Financial Accounts → Manage connections** and
+3. In PersFin, go to **Dashboard → Financial Accounts → Manage connections** and
    click **+ Plaid**.
 4. Paste both keys, click **Save**, then pick your bank in the window that opens.
 
 ### Add your home (optional)
 
 In the **Real Estate** box on the Dashboard, type your address and click
-**+ Add Property**. KevFin looks up its value and, if you enter your mortgage,
+**+ Add Property**. PersFin looks up its value and, if you enter your mortgage,
 works out your equity.
 
 ### Add anything else (optional)
@@ -183,7 +183,7 @@ The layout works on a phone screen too.
 
 ### Ask questions in plain English (optional)
 
-If you have a Claude subscription, KevFin's chat button (bottom-right) can answer
+If you have a Claude subscription, PersFin's chat button (bottom-right) can answer
 questions like "How much did I spend on restaurants this year?" It uses the
 [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) app on your
 computer and your own Claude login. Click the chat button and follow the
@@ -194,7 +194,7 @@ computer and your own Claude login. Click the chat button and follow the
 ## Keep a backup
 
 Click the **⚙ gear** (top-right) and choose **Download backup**. Save the file
-somewhere safe. If you ever get a new computer, install KevFin there and choose
+somewhere safe. If you ever get a new computer, install PersFin there and choose
 **Restore from backup**.
 
 ![The Setup menu](docs/screenshots/setup.png)
@@ -202,7 +202,7 @@ somewhere safe. If you ever get a new computer, install KevFin there and choose
 ## Updating
 
 Download the newest version from the
-[same download page](https://github.com/kxl3785/KevFin/releases/latest) and install
+[same download page](https://github.com/amolborcar/PersFin/releases/latest) and install
 it over the old one. Your data stays where it is.
 
 ---
@@ -210,12 +210,12 @@ it over the old one. Your data stays where it is.
 ## Questions
 
 **Is my financial data private?**
-Yes. Everything is stored on your computer. KevFin only goes online to fetch
+Yes. Everything is stored on your computer. PersFin only goes online to fetch
 your balances from the connector you chose, look up your home's value (it sends
 the address), and get stock prices (it sends ticker symbols).
 
 **Does it cost anything?**
-KevFin is free. SimpleFIN charges a small yearly fee; Plaid is free for personal
+PersFin is free. SimpleFIN charges a small yearly fee; Plaid is free for personal
 use. The AI chat is optional and uses a Claude subscription you already have.
 
 **Can I share my numbers with my spouse or advisor?**
@@ -223,19 +223,13 @@ Yes. In the **⚙ gear** menu, **Encrypted snapshot** makes a password-protected
 they can open in any web browser. It's a read-only copy; they can't change anything.
 
 **Something looks wrong or broken.**
-Please [open an issue](https://github.com/kxl3785/KevFin/issues) and describe what
+Please [open an issue](https://github.com/amolborcar/PersFin/issues) and describe what
 you saw.
 
 ## Other ways to run it
 
 Using an Intel Mac, or want to change the code? See the
 **[advanced guide](docs/ADVANCED.md)**.
-
-## Support
-
-KevFin is free. If it's useful to you, you can
-[☕ buy me a coffee](https://www.buymeacoffee.com/kxl3785). Stars and bug reports
-are just as appreciated.
 
 ## License
 

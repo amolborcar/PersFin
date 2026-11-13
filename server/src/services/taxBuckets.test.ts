@@ -12,7 +12,7 @@ let closeDb: () => void;
 let db: Database.Database;
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'kevfin-taxbuckets-'));
+  dir = mkdtempSync(join(tmpdir(), 'persfin-taxbuckets-'));
   process.env.DB_PATH = join(dir, 'test.db');
   vi.resetModules();
   const schema = await import('../db/schema.js');

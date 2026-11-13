@@ -6,11 +6,11 @@ import { isPlausibleEmail } from '../lib/secContact.ts';
 // notice (Allocation) and the Setup menu row, so validation, saving and the
 // privacy wording can't drift apart.
 //
-// SEC asks automated tools to identify themselves. KevFin has no built-in
-// identity: it declares "KevFin <email>" to sec.gov (and only sec.gov) when it
+// SEC asks automated tools to identify themselves. PersFin has no built-in
+// identity: it declares "PersFin <email>" to sec.gov (and only sec.gov) when it
 // downloads fund holdings, and makes no SEC requests until this is set.
 export const SEC_PRIVACY_NOTE =
-  'SEC asks automated tools to identify themselves. KevFin sends this only to sec.gov, with fund-holdings requests.';
+  'SEC asks automated tools to identify themselves. PersFin sends this only to sec.gov, with fund-holdings requests.';
 
 interface Props {
   initialEmail?: string | null;
@@ -47,7 +47,7 @@ export default function SecContactEmail({ initialEmail, onSaved, followUpLabel =
       setPhase('following');
       await onSaved(saved);
     } catch {
-      setError('Could not reach KevFin to save the email.');
+      setError('Could not reach PersFin to save the email.');
     } finally {
       setPhase('idle');
     }

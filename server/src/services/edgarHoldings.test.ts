@@ -369,14 +369,14 @@ describe('SEC identity (User-Agent) and request hygiene', () => {
     }
   });
 
-  it('builds the User-Agent per call: override > "KevFin <email>" > none', () => {
+  it('builds the User-Agent per call: override > "PersFin <email>" > none', () => {
     expect(edgarUserAgent()).toBeNull();
     process.env.SEC_CONTACT_EMAIL = '  me@example.com ';
-    expect(edgarUserAgent()).toBe('KevFin me@example.com');
+    expect(edgarUserAgent()).toBe('PersFin me@example.com');
     process.env.SEC_EDGAR_UA = 'Acme Corp ops@acme.test';
     expect(edgarUserAgent()).toBe('Acme Corp ops@acme.test');
     process.env.SEC_EDGAR_UA = '   '; // blank override (e.g. empty compose var) is ignored
-    expect(edgarUserAgent()).toBe('KevFin me@example.com');
+    expect(edgarUserAgent()).toBe('PersFin me@example.com');
     process.env.SEC_CONTACT_EMAIL = '';
     expect(edgarUserAgent()).toBeNull();
   });
@@ -413,11 +413,11 @@ describe('SEC identity (User-Agent) and request hygiene', () => {
     expect((await fetchEdgarConstituents('VXUS'))?.length).toBe(1);
     expect(f.mock.calls.length).toBeGreaterThanOrEqual(5);
     for (const h of seen) {
-      expect(h['User-Agent']).toBe('KevFin me@example.com');
+      expect(h['User-Agent']).toBe('PersFin me@example.com');
       expect(h['Accept-Encoding']).toBe('gzip, deflate');
     }
     expect(getLookThroughIssue()).toBeNull();
-    expect(getEdgarStatus()).toMatchObject({ identityConfigured: true, contactEmail: 'me@example.com', userAgent: 'KevFin me@example.com' });
+    expect(getEdgarStatus()).toMatchObject({ identityConfigured: true, contactEmail: 'me@example.com', userAgent: 'PersFin me@example.com' });
   });
 
   it('puts the HTTP status in the recorded error, flags "blocked", and caches no negative row', async () => {

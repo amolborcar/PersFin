@@ -106,7 +106,7 @@ describe('taxonomyFromDb (first start on an existing database)', () => {
 
 // The file next to a throwaway database, through the real budget service.
 describe('category file ↔ database', () => {
-  const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-catfile-'));
+  const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-catfile-'));
   const catPath = path.join(TMP, 'categories.json');
   let budget: typeof import('./budget.js');
   let getDb: typeof import('../db/schema.js').getDb;

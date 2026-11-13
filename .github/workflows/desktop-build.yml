@@ -45,7 +45,7 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: KevFin-macos
+          name: PersFin-macos
           path: desktop/dist-app/*.dmg
           if-no-files-found: error
 

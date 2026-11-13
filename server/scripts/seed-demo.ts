@@ -7,7 +7,7 @@
  *   DB_PATH=$PWD/data/demo.db npm run dev --prefix server
  *
  * It writes only to whatever DB_PATH points at, so it never touches your real
- * data/kevfin.db. All names, balances, holdings and transactions below are made
+ * data/persfin.db. All names, balances, holdings and transactions below are made
  * up. Re-running resets the demo DB from scratch.
  */
 import { getDb } from '../src/db/schema.js';

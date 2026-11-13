@@ -7,7 +7,7 @@ import type { ReviewGroup } from './budget.js';
 
 // DB_PATH must be set before the schema module loads (it reads the env at
 // import time), so every module that reaches it is imported dynamically below.
-const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-ai-'));
+const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-ai-'));
 process.env.DB_PATH = path.join(TMP, 'ai.db');
 const ai = await import('./aiCategorize.js');
 const budget = await import('./budget.js');

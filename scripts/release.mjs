@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Cut a KevFin release in one shot. Tags are the source of truth — the running
+// Cut a PersFin release in one shot. Tags are the source of truth — the running
 // app derives its displayed version from `git describe` (see
 // server/src/services/data.ts:appVersion), so the tag is what users see.
 //

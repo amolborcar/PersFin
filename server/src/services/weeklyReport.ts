@@ -201,7 +201,7 @@ export async function generateWeeklyReport(opts: { week?: string; now?: Date; ai
     if (r.ok) model.summary = r.text.trim().slice(0, 800);
   }
 
-  const appUrl = opts.appUrl ?? process.env.KEVFIN_PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 3001}`;
+  const appUrl = opts.appUrl ?? process.env.PERSFIN_PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 3001}`;
   db.prepare(`
     INSERT INTO weekly_reports (week_key, week_start, week_end, total, generated_at, model, html, text)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)

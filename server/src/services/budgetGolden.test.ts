@@ -15,7 +15,7 @@ import path from 'path';
  * at module load), hence the dynamic imports below.
  */
 
-const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-golden-'));
+const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-golden-'));
 process.env.DB_PATH = path.join(TMP, 'golden.db');
 
 const { seedPlaidItem } = await import('../db/plaidSeed.js');

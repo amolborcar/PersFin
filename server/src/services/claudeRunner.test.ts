@@ -7,7 +7,7 @@ import path from 'path';
 // echoes back what it received. Proves the isolation promise in CLAUDE.md for
 // runClaudeNoTools: no tools, user MCP servers ignored, prompt over stdin
 // (never argv), killed on timeout and on abort.
-const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-fakeclaude-'));
+const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-fakeclaude-'));
 const fake = path.join(TMP, 'claude');
 writeFileSync(fake, `#!/usr/bin/env node
 let stdin = '';
@@ -21,7 +21,7 @@ process.stdin.on('end', () => {
 chmodSync(fake, 0o755);
 process.env.CLAUDE_BIN = fake;
 // The runner never opens the database, but its imports load the schema module:
-// point DB_PATH at the temp dir so nothing can touch data/kevfin.db.
+// point DB_PATH at the temp dir so nothing can touch data/persfin.db.
 process.env.DB_PATH = path.join(TMP, 'unused.db');
 
 let runClaudeNoTools: typeof import('./claudeRunner.js').runClaudeNoTools;
@@ -44,7 +44,7 @@ describe('runClaudeNoTools', () => {
     expect(seen.argv).toContain('--strict-mcp-config');
     expect(seen.argv).not.toContain('--allowedTools');
     expect(after(seen.argv, '--system-prompt')).toBe('SYSTEM TEXT');
-    expect(seen.cwd).toMatch(/kevfin-ai-/); // a private temp dir
+    expect(seen.cwd).toMatch(/persfin-ai-/); // a private temp dir
   });
 
   it('is killed on timeout', async () => {

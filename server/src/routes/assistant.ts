@@ -103,7 +103,7 @@ router.post('/chat', async (req: Request, res: Response) => {
     // aggregated snapshot. The dir holds only these files and is deleted after the
     // turn (cleanup() above) — nothing is retained. realpath so the cwd the binary
     // sees matches the paths it reads (macOS tmpdir is a /var -> /private/var symlink).
-    dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'kevfin-chat-')));
+    dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'persfin-chat-')));
     // The Forecast (Monte Carlo) lives in the browser, so its inputs + computed
     // summary ride along on the request; pass them to the export for forecast.json.
     const clientForecast = req.body?.clientContext?.forecast;

@@ -291,7 +291,7 @@ export async function exportChatData(dir: string, clientForecast?: unknown): Pro
 
 export function systemPrompt(context: string, dataFiles = ''): string {
   return (
-    `You are the built-in financial assistant for KevFin, a personal net-worth ` +
+    `You are the built-in financial assistant for PersFin, a personal net-worth ` +
     `tracker. The user is the owner of this data and is asking about their own ` +
     `finances. Answer their questions using the live snapshot of their accounts, ` +
     `investments, and budget provided below.\n\n` +

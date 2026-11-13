@@ -15,7 +15,7 @@ let backfillHistory: typeof import('./backfill.js').backfillHistory;
 let closeDb: () => void;
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'kevfin-backfill-'));
+  dir = mkdtempSync(join(tmpdir(), 'persfin-backfill-'));
   process.env.DB_PATH = join(dir, 'test.db');
   vi.resetModules();
   const schema = await import('../db/schema.js');

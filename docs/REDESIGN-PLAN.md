@@ -1,10 +1,10 @@
-# KevFin redesign & optimization plan
+# PersFin redesign & optimization plan
 
 > **Status: executed.** Everything below has shipped on this branch except the
 > deliberate scope decisions recorded in "Execution notes" at the end — read
 > that section for where reality differed from the plan and why.
 
-A phased, incremental plan to restructure KevFin around durable local data.
+A phased, incremental plan to restructure PersFin around durable local data.
 Each phase is independently shippable, keeps CI green, and preserves existing
 databases (every schema change ships with an in-place migration). Nothing here
 changes the hard constraints: local-only data, no auth layer, synchronous
@@ -41,7 +41,7 @@ try/catch `ALTER TABLE` in `db/schema.ts`, lazy `CREATE TABLE` inside
   stamps `user_version = 1`. Fresh databases get the same result.
 - `getDb()` keeps its exact signature; only `migrate()` changes internally.
 
-*Acceptance:* opening a pre-existing `kevfin.db` and a fresh DB both produce
+*Acceptance:* opening a pre-existing `persfin.db` and a fresh DB both produce
 identical `sqlite_master` contents; golden tests pass.
 
 ---
@@ -217,7 +217,7 @@ Everything shipped with golden snapshots byte-identical; where the plan and
 the code disagreed, the code's actual semantics won. The deltas:
 
 1. **Categories are NOT stored per-row (Phase 1.2 amended).** Categorization
-   in KevFin is holistic at read time: transfer-pair detection, feed↔import
+   in PersFin is holistic at read time: transfer-pair detection, feed↔import
    dedup and the tracked-card rule all operate over the whole ledger at once,
    and there is no per-transaction manual category today (users categorize by
    merchant/base/smart rules). Persisting a resolved category per row would

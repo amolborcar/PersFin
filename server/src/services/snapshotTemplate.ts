@@ -25,7 +25,7 @@ export function renderSnapshotHtml(payload: EncryptedPayload, info: ViewerInfo):
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KevFin — Encrypted Snapshot</title>
+<title>PersFin — Encrypted Snapshot</title>
 <style>
   :root{
     --bg:#0e1117; --surface:#161b22; --border:#272d38; --text:#e6edf3;
@@ -202,7 +202,7 @@ export function renderSnapshotHtml(payload: EncryptedPayload, info: ViewerInfo):
     var latest=hist.length?hist[0]:null; // history is newest-first
 
     var html='<div class="wrap">'
-      +'<div style="margin-bottom:24px"><h1>'+esc(meta.appName||"KevFin")+'</h1>'
+      +'<div style="margin-bottom:24px"><h1>'+esc(meta.appName||"PersFin")+'</h1>'
       +'<p class="muted">Snapshot · generated '+esc(fmtDate(meta.generatedAt))+'</p></div>';
 
     html+='<div class="kpis">'
@@ -224,7 +224,7 @@ export function renderSnapshotHtml(payload: EncryptedPayload, info: ViewerInfo):
   // ---- password gate -------------------------------------------------------
   function gate(message){
     root.innerHTML=''
-      +'<div class="gate"><h1 style="margin-bottom:8px">KevFin</h1>'
+      +'<div class="gate"><h1 style="margin-bottom:8px">PersFin</h1>'
       +'<p class="muted" style="margin-bottom:18px">Encrypted snapshot' + (INFO.generatedAt?' · '+esc(fmtDate(INFO.generatedAt)):'') + '</p>'
       +'<div class="card"><label class="muted" style="font-size:12px">Password</label>'
       +'<input id="pw" type="password" autofocus style="margin:6px 0 12px" />'

@@ -4,10 +4,10 @@
 // with launchctl.
 //
 // Agents:
-//   com.kevfin.server      the KevFin server. Starts at login, restarted if it
+//   com.persfin.server      the PersFin server. Starts at login, restarted if it
 //                          stops (KeepAlive). Listens on loopback + Tailscale.
-//   com.kevfin.daily-sync  06:00 every day: POST /api/jobs/daily-sync
-//   com.kevfin.snapshot    00:00 every day: POST /api/jobs/snapshot
+//   com.persfin.daily-sync  06:00 every day: POST /api/jobs/daily-sync
+//   com.persfin.snapshot    00:00 every day: POST /api/jobs/snapshot
 //
 // The job agents use StartCalendarInterval, so a job missed while the Mac slept
 // runs once when it wakes. The server makes every job idempotent per day.
@@ -15,9 +15,9 @@
 const path = require('path');
 
 const LABELS = {
-  server: 'com.kevfin.server',
-  dailySync: 'com.kevfin.daily-sync',
-  snapshot: 'com.kevfin.snapshot',
+  server: 'com.persfin.server',
+  dailySync: 'com.persfin.daily-sync',
+  snapshot: 'com.persfin.snapshot',
 };
 const ALL_LABELS = Object.values(LABELS);
 
@@ -80,8 +80,8 @@ function serverEnv({ port, dbPath, keysPath, claudeBin }) {
     NODE_ENV: 'production',
     PORT: String(port),
     DB_PATH: dbPath,
-    KEVFIN_ENV_PATH: keysPath,
-    KEVFIN_LISTEN: 'local+tailscale',
+    PERSFIN_ENV_PATH: keysPath,
+    PERSFIN_LISTEN: 'local+tailscale',
     ...(claudeBin ? { CLAUDE_BIN: claudeBin } : {}),
   };
 }
@@ -95,7 +95,7 @@ function buildAgents(opts) {
   const program = packaged ? [execPath, entry] : ['/usr/bin/env', 'node', entry];
   const env = {
     ...serverEnv(opts),
-    KEVFIN_SCHEDULER: 'launchd',
+    PERSFIN_SCHEDULER: 'launchd',
     PATH: AGENT_PATH,
     ...(packaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
   };

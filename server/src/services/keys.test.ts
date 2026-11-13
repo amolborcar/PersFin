@@ -6,9 +6,9 @@ import { runMigrations } from '../db/migrations.js';
 // keys.ts resolves the env file at import time — point it at a throwaway file
 // BEFORE the import so the success-path tests never touch a real keys file.
 const envFile = vi.hoisted(() => {
-  const dir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'kevfin-keys-'));
-  const file = require('path').join(dir, 'kevfin.env');
-  process.env.KEVFIN_ENV_PATH = file;
+  const dir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'persfin-keys-'));
+  const file = require('path').join(dir, 'persfin.env');
+  process.env.PERSFIN_ENV_PATH = file;
   return file as string;
 });
 const dbRef = vi.hoisted(() => ({ db: null as unknown }));

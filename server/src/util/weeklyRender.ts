@@ -105,19 +105,19 @@ export function renderWeeklyHtml(m: WeeklyModel, opts: { appUrl: string }): stri
       (m.review.week > 0
         ? `${m.review.week} uncategorized transaction${m.review.week === 1 ? '' : 's'} this week (${m.review.total} in total). `
         : `${m.review.total} uncategorized transaction${m.review.total === 1 ? '' : 's'} to review. `) +
-      `<a href="${esc(reviewUrl)}" style="color:${C.accent};">Review them in KevFin →</a></p></td></tr>`
+      `<a href="${esc(reviewUrl)}" style="color:${C.accent};">Review them in PersFin →</a></p></td></tr>`
     : '';
   const summary = m.summary
     ? `<tr><td style="padding:16px 24px 0;"><p style="margin:0;font-size:15px;line-height:1.5;color:${C.ink};">${esc(m.summary)}</p></td></tr>`
     : '';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KevFin · Week of ${esc(weekLabel(m))}</title></head>
+<title>PersFin · Week of ${esc(weekLabel(m))}</title></head>
 <body style="margin:0;padding:0;background:${C.bg};font-family:${FONT};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg};"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:${C.card};border:1px solid ${C.rule};border-radius:12px;">
 <tr><td style="padding:24px 24px 0;">
-<p style="margin:0;font-size:13px;color:${C.muted};">KevFin · weekly spending</p>
+<p style="margin:0;font-size:13px;color:${C.muted};">PersFin · weekly spending</p>
 <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:${C.ink};">Week of ${esc(weekLabel(m))}</p>
 <p style="margin:14px 0 0;font-size:34px;font-weight:700;color:${C.ink};">${fmtMoney(m.total)} <span style="font-size:15px;font-weight:400;color:${C.muted};">spent</span></p>
 <p style="margin:4px 0 0;font-size:14px;color:${C.muted};">${esc(comparisonLine(m))}</p>
@@ -129,7 +129,7 @@ ${spendTable(m)}
 ${changesBlock(m)}
 ${recurringBlock(m)}
 ${review}
-<tr><td style="padding:20px 24px 24px;"><p style="margin:0;font-size:12px;color:${C.muted};">Generated ${esc(fmtDateUS(m.generatedAt.slice(0, 10)))} by KevFin on your own computer.</p></td></tr>
+<tr><td style="padding:20px 24px 24px;"><p style="margin:0;font-size:12px;color:${C.muted};">Generated ${esc(fmtDateUS(m.generatedAt.slice(0, 10)))} by PersFin on your own computer.</p></td></tr>
 </table></td></tr></table>
 </body></html>`;
 }

@@ -91,7 +91,7 @@ function ChatIcon() {
 export default function AiAssistant({ view }: { view: View }) {
   const suggestions = SUGGESTIONS[view] ?? SUGGESTIONS.dashboard;
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = usePersistentState<Message[]>('kevfin.assistant.messages', []);
+  const [messages, setMessages] = usePersistentState<Message[]>('persfin.assistant.messages', []);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);

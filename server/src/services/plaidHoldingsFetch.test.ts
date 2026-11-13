@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 // The live holdings path: which items are asked, what is cached, and how a
 // refusal (no investment consent) is handled — with a fake Plaid client.
-const TMP = mkdtempSync(join(tmpdir(), 'kevfin-holdings-'));
+const TMP = mkdtempSync(join(tmpdir(), 'persfin-holdings-'));
 process.env.DB_PATH = join(TMP, 'holdings.db');
 process.env.PLAID_CLIENT_ID = 'cid';
 process.env.PLAID_SECRET = 'secret';

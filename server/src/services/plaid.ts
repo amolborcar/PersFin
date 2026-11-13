@@ -60,7 +60,7 @@ export function plaidConfigured(): boolean {
 export async function createLinkToken(userId: string): Promise<string> {
   const res = await getPlaidClient().linkTokenCreate({
     user: { client_user_id: userId },
-    client_name: 'KevFin',
+    client_name: 'PersFin',
     // Transactions is required for every institution. Investments (holdings for
     // the Investments page and the brokerage backfill) is requested only where
     // the institution supports it, so a bank or card without it isn't blocked.
@@ -225,7 +225,7 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 const toUnix = (date: string | null): number | null =>
   date ? Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000) : null;
 
-// Map a Plaid transaction into KevFin's RawTxn shape. Plaid amounts are positive
+// Map a Plaid transaction into PersFin's RawTxn shape. Plaid amounts are positive
 // when money LEAVES the account; the budget uses the opposite convention
 // (+ = money in), so flip the sign here.
 function toRawTxn(t: Transaction, names: Map<string, string>): RawTxn {
@@ -306,7 +306,7 @@ export async function getAllPlaidTransactions(): Promise<RawTxn[]> {
 
 // --- Investment holdings ---------------------------------------------------
 
-// Map Plaid's holdings + securities into KevFin's Holding shape, per account.
+// Map Plaid's holdings + securities into PersFin's Holding shape, per account.
 //  - cost_basis is Plaid's total basis for the position; null or ≤ 0 means
 //    "unknown" (many employer plans report nothing), never a fake zero.
 //  - Plaid reports no lot open date, so `acquired` is always null.

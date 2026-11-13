@@ -72,7 +72,7 @@ const electronVersion = require(path.join(desktopDir, 'node_modules/electron/pac
   } else {
     try {
       console.log(`[stage] bundling claude ${CLAUDE_VERSION} (${pkg})`);
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kevfin-claude-'));
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'persfin-claude-'));
       execFileSync('npm', ['pack', `${pkg}@${CLAUDE_VERSION}`, '--pack-destination', tmp], { stdio: 'inherit' });
       const tgz = fs.readdirSync(tmp).find(f => f.endsWith('.tgz'));
       if (!tgz) throw new Error('npm pack produced no tarball');

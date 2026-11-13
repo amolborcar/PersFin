@@ -25,14 +25,14 @@ import type { Constituent } from './fundHoldings.js';
 // gzip/deflate. A plain product string — or a GitHub noreply address — gets
 // rejected, so there is deliberately NO built-in default identity: the user
 // supplies a contact email (in-app Setup, SEC_CONTACT_EMAIL) and until then
-// KevFin makes no requests to sec.gov at all. SEC_EDGAR_UA is an advanced
+// PersFin makes no requests to sec.gov at all. SEC_EDGAR_UA is an advanced
 // override for the whole header value. Read per request (not at module load) so
 // saving the email in the app takes effect without a restart.
 export function edgarUserAgent(): string | null {
   const override = process.env.SEC_EDGAR_UA?.trim();
   if (override) return override;
   const email = process.env.SEC_CONTACT_EMAIL?.trim();
-  return email ? `KevFin ${email}` : null;
+  return email ? `PersFin ${email}` : null;
 }
 
 export const NO_CONTACT_MESSAGE = 'SEC contact email not set';

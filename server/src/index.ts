@@ -1,4 +1,4 @@
-import './env.js'; // loads the keys file (honors KEVFIN_ENV_PATH) before anything reads env
+import './env.js'; // loads the keys file (honors PERSFIN_ENV_PATH) before anything reads env
 import express from 'express';
 import cron from 'node-cron';
 import os from 'os';
@@ -71,10 +71,10 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Scheduled jobs (see services/jobs.ts). Under the macOS always-on setup,
-// launchd agents trigger them via POST /api/jobs/<name> (KEVFIN_SCHEDULER=launchd)
+// launchd agents trigger them via POST /api/jobs/<name> (PERSFIN_SCHEDULER=launchd)
 // and run a missed job once the Mac wakes; otherwise (dev) node-cron does it
 // in-process. Either way runJob makes each job run at most once per local day.
-if (process.env.KEVFIN_SCHEDULER !== 'launchd') {
+if (process.env.PERSFIN_SCHEDULER !== 'launchd') {
   // Accounts: refresh daily at 6 AM, then repair history.
   cron.schedule('0 6 * * *', () => {
     runJob('daily-sync').catch(err => console.error('[cron] daily-sync failed:', err));
@@ -93,13 +93,13 @@ process.on('unhandledRejection', err => console.error('[unhandledRejection]', er
 const PORT = Number(process.env.PORT ?? 3001);
 
 function onListening() {
-  console.log(`KevFin server running on http://localhost:${PORT}`);
+  console.log(`PersFin server running on http://localhost:${PORT}`);
   // Catch up on history a scheduled run missed while offline. Fire-and-forget
   // so a slow or failing provider can't hold up serving.
   catchUpHistory().catch(err => console.error('[startup] history catch-up failed:', err));
 }
 
-const listenMode = listenModeFromEnv(process.env.KEVFIN_LISTEN);
+const listenMode = listenModeFromEnv(process.env.PERSFIN_LISTEN);
 if (listenMode === 'all') {
   app.listen(PORT, onListening);
 } else {

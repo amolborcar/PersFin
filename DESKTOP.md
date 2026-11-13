@@ -1,6 +1,6 @@
-# KevFin desktop app
+# PersFin desktop app
 
-A standalone macOS desktop build of KevFin (Electron) — no terminal needed. It
+A standalone macOS desktop build of PersFin (Electron) — no terminal needed. It
 bundles the server + client and opens a native window. Everything stays local;
 the storage location is user-choosable (e.g. a cloud-synced or NAS folder) so
 data can be backed up or moved between machines. macOS is the only supported
@@ -21,7 +21,7 @@ at the server's port (3001, or the next free one).
 npm run desktop:dist     # builds, stages, and packages the macOS app
 ```
 
-Output lands in `desktop/dist-app/` as `KevFin-<version>-arm64.dmg`.
+Output lands in `desktop/dist-app/` as `PersFin-<version>-arm64.dmg`.
 
 The app is **unsigned**. On first launch, right-click the app → **Open** →
 **Open** (one-time Gatekeeper bypass).
@@ -46,7 +46,7 @@ macOS app on a macOS runner and uploads the `.dmg` as an artifact:
 - Run it from the repo's **Actions → Desktop build → Run workflow**, or
 - push a tag: `git tag v1.0.0 && git push origin v1.0.0`.
 
-Download the `KevFin-macos` artifact from the run.
+Download the `PersFin-macos` artifact from the run.
 
 ## Keep running in the background (always on)
 
@@ -55,14 +55,14 @@ three launchd agents in `~/Library/LaunchAgents/` (no admin password needed):
 
 | Agent | What it does |
 |---|---|
-| `com.kevfin.server` | Runs the KevFin server at login and restarts it if it stops. Listens on `127.0.0.1` and your Tailscale address only. |
-| `com.kevfin.daily-sync` | 06:00 every day: Plaid sync, then history repair. |
-| `com.kevfin.snapshot` | 00:00 every day: net-worth snapshot. |
+| `com.persfin.server` | Runs the PersFin server at login and restarts it if it stops. Listens on `127.0.0.1` and your Tailscale address only. |
+| `com.persfin.daily-sync` | 06:00 every day: Plaid sync, then history repair. |
+| `com.persfin.snapshot` | 00:00 every day: net-worth snapshot. |
 
 If the Mac is asleep at a scheduled time, launchd runs the job once when it
 wakes; the server runs each job at most once per day. Keep the Mac awake:
 System Settings → Energy → "Prevent automatic sleeping when the display is off".
-Setup shows a warning when system sleep is on. KevFin never changes power settings.
+Setup shows a warning when system sleep is on. PersFin never changes power settings.
 
 With the service on, closing the app window leaves the server running, and the
 app opens a window to it. Turning it off removes the agents and the app runs its
@@ -71,14 +71,14 @@ own server again. Moving the storage location rewrites the agents.
 Check it from Terminal:
 
 ```bash
-launchctl print gui/$(id -u)/com.kevfin.server | head -20
+launchctl print gui/$(id -u)/com.persfin.server | head -20
 ```
 
 ```bash
 curl -s -X POST http://127.0.0.1:3001/api/jobs/snapshot
 ```
 
-Logs: `~/Library/Logs/KevFin/` (`server.log`, `server.err.log`, `daily-sync.log`, `snapshot.log`).
+Logs: `~/Library/Logs/PersFin/` (`server.log`, `server.err.log`, `daily-sync.log`, `snapshot.log`).
 
 ## Choosing where data lives
 
@@ -86,10 +86,10 @@ In the app: **Setup (⚙) → Storage location → Change folder…**. Pick any 
 a cloud-synced or NAS folder keeps your database and keys file backed up or synced.
 The app copies the files there and relaunches.
 
-> Don't run KevFin on two computers against the same synced file at the same time
+> Don't run PersFin on two computers against the same synced file at the same time
 > — SQLite allows only one writer.
 
-Under the hood the desktop app sets `DB_PATH` and `KEVFIN_ENV_PATH` for the server;
+Under the hood the desktop app sets `DB_PATH` and `PERSFIN_ENV_PATH` for the server;
 both default to the app's per-user data folder until you change them.
 
 ## AI assistant

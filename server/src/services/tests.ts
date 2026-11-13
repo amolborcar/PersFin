@@ -61,7 +61,7 @@ export async function runTests(): Promise<TestRunResult> {
     return { available: false, success: false, ...empty };
   }
 
-  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'kevfin-vitest-'));
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'persfin-vitest-'));
   const outFile = path.join(tmpDir, 'results.json');
   const started = Date.now();
   try {

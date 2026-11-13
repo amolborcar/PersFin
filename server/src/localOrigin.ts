@@ -11,8 +11,8 @@ import type { Request, Response, NextFunction } from 'express';
 //     /api/data/reset). The client is always same-origin, so no CORS is needed.
 // Non-browser callers send no Origin and are unaffected.
 const LOCAL_SUFFIXES = ['.localhost', '.local', '.lan', '.home.arpa', '.ts.net'];
-// Extra names for reverse proxies / custom DNS, e.g. KEVFIN_ALLOWED_HOSTS=kevfin.example.com
-const EXTRA_HOSTS = (process.env.KEVFIN_ALLOWED_HOSTS ?? '')
+// Extra names for reverse proxies / custom DNS, e.g. PERSFIN_ALLOWED_HOSTS=persfin.example.com
+const EXTRA_HOSTS = (process.env.PERSFIN_ALLOWED_HOSTS ?? '')
   .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
 
 // "host:port" / "[::1]:port" / "host" -> lowercase hostname without port or brackets.
@@ -30,7 +30,7 @@ function isLocalHostname(h: string): boolean {
 export function checkLocalRequest(hostHeader: string | undefined, origin: string | undefined, secFetchSite?: string): string | null {
   const host = hostHeader ? hostnameOf(hostHeader) : '';
   if (!host || !isLocalHostname(host)) {
-    return `Blocked request for host "${host}". If this is your own hostname, add it to KEVFIN_ALLOWED_HOSTS in server/.env (comma-separated) and restart.`;
+    return `Blocked request for host "${host}". If this is your own hostname, add it to PERSFIN_ALLOWED_HOSTS in server/.env (comma-separated) and restart.`;
   }
   if (secFetchSite === 'cross-site') return 'Cross-site requests are not allowed.';
   if (origin === undefined) return null;
@@ -46,7 +46,7 @@ export function checkLocalRequest(hostHeader: string | undefined, origin: string
   if (process.env.NODE_ENV !== 'production' && isLocalHostname(oHost)) return null;
   // Behind a reverse proxy that rewrites Host: trust only names the owner listed.
   if (EXTRA_HOSTS.includes(oHost)) return null;
-  return `Cross-origin request from "${oHost}" refused. If that's your own hostname (e.g. behind a reverse proxy), add it to KEVFIN_ALLOWED_HOSTS in server/.env and restart.`;
+  return `Cross-origin request from "${oHost}" refused. If that's your own hostname (e.g. behind a reverse proxy), add it to PERSFIN_ALLOWED_HOSTS in server/.env and restart.`;
 }
 
 // Express middleware: mount on /api.

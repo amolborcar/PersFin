@@ -111,7 +111,7 @@ export async function exportSnapshotHtml(password: string, expiresAt: string | n
   const data = await gatherSnapshot();
   const meta: SnapshotMeta = {
     generatedAt: new Date().toISOString(),
-    appName: 'KevFin',
+    appName: 'PersFin',
     expiresAt,
   };
   const payload = await encryptPayload({ meta, data }, password);

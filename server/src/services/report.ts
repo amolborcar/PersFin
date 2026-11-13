@@ -382,10 +382,10 @@ export function buildAdvisorySystemPrompt(w: ReportWindow, now: Date): string {
 async function aiAdvisory(summary: string, system: string): Promise<Advisory | null> {
   // Local verification switch: render the deterministic report without spawning
   // the Claude binary at all.
-  if (process.env.KEVFIN_REPORT_NO_AI === '1') return null;
+  if (process.env.PERSFIN_REPORT_NO_AI === '1') return null;
   const bin = findClaudeBinary();
   if (!bin) return null;
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'kevfin-report-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'persfin-report-'));
   return await new Promise<Advisory | null>(resolve => {
     let done = false;
     const finish = (v: Advisory | null) => {

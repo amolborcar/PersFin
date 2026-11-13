@@ -35,7 +35,7 @@ router.post('/keys', async (req: Request, res: Response) => {
   }
 });
 
-// Set/replace (or, with an empty email, clear) the contact email KevFin declares
+// Set/replace (or, with an empty email, clear) the contact email PersFin declares
 // to SEC EDGAR when fetching fund holdings. Not a secret, so no masking.
 router.post('/sec-contact', (req: Request, res: Response) => {
   const email = typeof req.body?.email === 'string' ? req.body.email : '';

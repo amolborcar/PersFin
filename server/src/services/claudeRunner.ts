@@ -23,7 +23,7 @@ export const runClaudeNoTools: ClaudeRunner = async (prompt, system, opts = {}) 
   const bin = findClaudeBinary();
   if (!bin) return { ok: false, error: 'no-binary' };
   if (opts.signal?.aborted) return { ok: false, error: 'aborted' };
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'kevfin-ai-'));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'persfin-ai-'));
   return await new Promise<ClaudeRunResult>(resolve => {
     let done = false;
     let child: ReturnType<typeof spawn> | null = null;

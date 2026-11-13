@@ -1,11 +1,11 @@
 # Rebuild plan: personal budgeting focus
 
-This plan changes KevFin into a personal, YNAB-style budgeting app for one
+This plan changes the app (formerly KevFin, now PersFin) into a personal, YNAB-style budgeting app for one
 user on one always-on Mac mini. Each phase is one commit (or one PR), so CI
 checks each step.
 
-The repository `amolborcar/PersFin` is independent. It left the fork network
-of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
+The repository `amolborcar/PersFin` is independent (it is no longer a fork).
+Open PRs against `amolborcar/PersFin` only.
 
 ## Status
 
@@ -19,7 +19,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | 4 Category file | Done. Build passes; tests pass (server 378, client 143, desktop 6). |
 | 5 AI categorization | Done. Build passes; tests pass (server 393, client 143, desktop 6). Not yet run against the real Claude Code. |
 | 6 Weekly report content | Done. Build passes; tests pass (server 411, client 143, desktop 6). |
-| 7–9 | Not started |
+| Rename to PersFin | Done (Phase 9 items 2 and 5, done early). Old data moves once on first start; see "Rename" below. |
+| 7–9 | Not started (except the rename) |
 
 Update this table at the end of each phase.
 
@@ -149,17 +150,17 @@ Update this table at the end of each phase.
 
 ## Phase 3b: Always on with launchd (Mac mini)
 
-1. **Server LaunchAgent** `~/Library/LaunchAgents/com.kevfin.server.plist`:
+1. **Server LaunchAgent** `~/Library/LaunchAgents/com.persfin.server.plist`:
    - `RunAtLoad` and `KeepAlive`.
    - Run the server with the Electron binary and `ELECTRON_RUN_AS_NODE=1`
      (better-sqlite3 is built for Electron's ABI).
-   - Pass `PORT`, `DB_PATH`, and `KEVFIN_ENV_PATH` as `desktop/main.js` does.
-   - Write logs to `~/Library/Logs/KevFin/`.
+   - Pass `PORT`, `DB_PATH`, and `PERSFIN_ENV_PATH` as `desktop/main.js` does.
+   - Write logs to `~/Library/Logs/PersFin/`.
    - Listen on `127.0.0.1` and the Tailscale interface only.
 2. **Desktop app as client:** at start, check the configured port. If the server
    answers, open the window to it. If not, start the server as now. Do not stop
    a launchd server when the window closes.
-3. **Setup toggle** "Keep KevFin running in the background": write or remove the
+3. **Setup toggle** "Keep PersFin running in the background": write or remove the
    plists and run `launchctl bootstrap` / `bootout` for `gui/$UID`.
 4. **Scheduled jobs** with `StartCalendarInterval`. Each job runs
    `curl -X POST http://127.0.0.1:<port>/api/...`:
@@ -184,8 +185,8 @@ Implementation (done):
   its own child server. Moving the storage location rewrites the agents.
 - `server/src/services/jobs.ts` + `POST /api/jobs/:name` (`daily-sync`,
   `snapshot`): idempotent per local day; `?force=1` reruns. node-cron calls the
-  same jobs unless `KEVFIN_SCHEDULER=launchd`.
-- `KEVFIN_LISTEN=local+tailscale` (`server/src/util/listen.ts`): binds
+  same jobs unless `PERSFIN_SCHEDULER=launchd`.
+- `PERSFIN_LISTEN=local+tailscale` (`server/src/util/listen.ts`): binds
   127.0.0.1, ::1 and Tailscale addresses (100.64.0.0/10, fd7a:115c:a1e0::/48),
   re-checked every 60 s. Both the launchd server and the app's child server use it.
 - `GET /api/meta/power` reads `pmset -g`; Setup shows a warning when system
@@ -222,7 +223,7 @@ Implementation (done):
 
 Implementation (done) — differences from the steps above:
 - The file is next to the database (`data/categories.json` by default, or
-  `KEVFIN_CATEGORIES_PATH`), so a moved data folder carries it. Template:
+  `PERSFIN_CATEGORIES_PATH`), so a moved data folder carries it. Template:
   `categories.example.json` (a test keeps it equal to the built-in defaults).
 - No `system` block: the six system categories (Paychecks, Other Income,
   Dividends & Capital Gains, Transfers, Credit Card Payment, Miscellaneous) keep
@@ -309,7 +310,7 @@ Implementation (done):
     fixed recurring bill).
   - Recurring charges this week: new (first seen within ~10 weeks), price
     change (> 5% and >= $1 vs the previous charge).
-  - Uncategorized count with a link to `KEVFIN_PUBLIC_URL`/budget.
+  - Uncategorized count with a link to `PERSFIN_PUBLIC_URL`/budget.
   - Optional AI summary (off by default), from aggregated figures only.
 - `util/weeklyRender.ts`: email-safe HTML (tables, inline styles, no scripts,
   SVG or images) and a 1–3 line text version.
@@ -327,7 +328,7 @@ Implementation (done):
    button.
 3. **Privacy level** per channel: `full`, `totals only`, `notice only`.
 4. **Run endpoint**: `generateWeeklyReport()` (Phase 6) builds and stores the
-   report; set `KEVFIN_PUBLIC_URL` to the Tailscale URL so the review link
+   report; set `PERSFIN_PUBLIC_URL` to the Tailscale URL so the review link
    works from the phone. Add a `weekly-report` job to `server/src/services/jobs.ts`
    (`JOB_NAMES`, keyed per week instead of per day) so it runs through
    `POST /api/jobs/weekly-report`, and add its agent (Sunday 19:00,
@@ -353,13 +354,32 @@ Recharts, with data shaping in `client/src/lib/*.ts` and Vitest tests.
 
 1. Rewrite `README.md`. Update `CLAUDE.md`, `DESKTOP.md`, `docs/ADVANCED.md`,
    and `server/.env.example`.
-2. Remove links to the upstream project `kxl3785/KevFin`: releases, issues, and
-   the donation link in `README.md`.
+2. ~~Remove links to the upstream project: releases, issues, and the donation
+   link in `README.md`.~~ Done with the rename.
 3. Delete `.github/workflows/update-irs-limits.yml` and
    `.github/agent-tasks/update-irs-limits.md`, or set up the `AGENT_CMD` secret.
    This repository does not have that secret.
 4. Remove dead code and unused packages.
-5. Optional rename of the app, with a one-time data path migration.
+5. ~~Rename of the app, with a one-time data path migration.~~ Done.
+
+## Rename (KevFin → PersFin), done
+
+- Every name, env variable, package, label and file name changed:
+  `KEVFIN_*` → `PERSFIN_*`, `kevfin.db` → `persfin.db`, `kevfin.env` →
+  `persfin.env`, `com.kevfin.*` → `com.persfin.*`, Electron `appId`
+  `com.amolborcar.persfin` and `productName` `PersFin` (so the data folder is
+  `~/Library/Application Support/PersFin` and logs go to `~/Library/Logs/PersFin`).
+- One-time moves for an old install:
+  - Server (`server/src/db/schema.ts`): with no `DB_PATH`, `data/kevfin.db` is
+    renamed to `data/persfin.db`.
+  - Desktop (`migrateFromKevFin` in `desktop/main.js`): the old `com.kevfin.*`
+    agents are stopped and removed; the data in the old KevFin folder moves to
+    the new folder with the new names; custom database or keys locations stay;
+    if the old background service was on, the new one is installed.
+- Old `KEVFIN_*` env variables are not read. Set the `PERSFIN_*` names.
+- Restore accepts backups made under the old name (`kevfin-backup`).
+- `LICENSE` keeps the original KevFin copyright line (MIT requires it) and
+  adds a PersFin line.
 
 ## Order
 

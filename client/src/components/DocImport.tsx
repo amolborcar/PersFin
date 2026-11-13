@@ -5,11 +5,11 @@ import { useClaudeAuth, ClaudeLoginPrompt, prefetchClaudeAuth, getClaudeAuth, re
 
 // Cross-component signal: dispatch this with `{ file }` to hand a dropped file to
 // the (always-mounted) importer — used by the AI assistant's drag-and-drop.
-export const IMPORT_FILE_EVENT = 'kevfin:import-file';
+export const IMPORT_FILE_EVENT = 'persfin:import-file';
 
 // Fired after a transaction CSV is imported here, so the Budget page (if mounted)
 // can refresh its data and surface the new "Imported transactions" review queue.
-export const BUDGET_IMPORTED_EVENT = 'kevfin:budget-imported';
+export const BUDGET_IMPORTED_EVENT = 'persfin:budget-imported';
 
 function isCsvFile(file: File): boolean {
   return /\.csv$/i.test(file.name) || file.type === 'text/csv';

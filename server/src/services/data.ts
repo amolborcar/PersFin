@@ -10,12 +10,12 @@ import { categoryFilePath } from './categoryFile.js';
 // Operational data-lifecycle actions for the Setup hub: full-database backup,
 // restore, reset, and a system-status read. These are deliberately separate
 // from the snapshot export (which is a read-only, encrypted *view*): a backup is
-// the live kevfin.db you can restore into a running app.
+// the live persfin.db you can restore into a running app.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKUP_DIR = path.join(path.dirname(DB_PATH), 'backups');
 
-// Core tables every KevFin database has — used to sanity-check an uploaded file
+// Core tables every PersFin database has — used to sanity-check an uploaded file
 // before we let it replace the live one.
 const REQUIRED_TABLES = ['accounts', 'net_worth_snapshots', 'meta'];
 
@@ -67,7 +67,7 @@ export async function backupToTempFile(): Promise<string> {
 
 export function backupFilename(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  return `kevfin-backup-${ts}.db`;
+  return `persfin-backup-${ts}.db`;
 }
 
 // --- restore ----------------------------------------------------------------
@@ -85,7 +85,7 @@ export async function restoreFromBuffer(buf: Buffer): Promise<Record<string, num
   const incoming = path.join(BACKUP_DIR, `incoming-${Date.now()}.db`);
   writeFileSync(incoming, buf);
 
-  // Validate the uploaded file has the tables a KevFin DB must have.
+  // Validate the uploaded file has the tables a PersFin DB must have.
   try {
     const probe = new Database(incoming, { readonly: true });
     try {
@@ -95,7 +95,7 @@ export async function restoreFromBuffer(buf: Buffer): Promise<Record<string, num
       );
       const missing = REQUIRED_TABLES.filter(t => !names.has(t));
       if (missing.length) {
-        throw new RestoreError(`This doesn't look like a KevFin backup (missing: ${missing.join(', ')}).`);
+        throw new RestoreError(`This doesn't look like a PersFin backup (missing: ${missing.join(', ')}).`);
       }
     } finally {
       probe.close();

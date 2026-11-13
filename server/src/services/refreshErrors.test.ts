@@ -52,7 +52,7 @@ describe('ProviderRefreshError', () => {
 
 // --- the real provider aggregates, end to end ---------------------------------
 
-const TMP = mkdtempSync(join(tmpdir(), 'kevfin-referr-'));
+const TMP = mkdtempSync(join(tmpdir(), 'persfin-referr-'));
 process.env.DB_PATH = join(TMP, 'referr.db');
 process.env.PLAID_CLIENT_ID = 'cid';
 process.env.PLAID_SECRET = SECRET;

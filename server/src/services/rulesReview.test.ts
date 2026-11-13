@@ -11,7 +11,7 @@ import type { AddressInfo } from 'net';
  * budgetFixes.test.ts.
  */
 
-const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-rules-'));
+const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-rules-'));
 process.env.DB_PATH = path.join(TMP, 'rules.db');
 
 const { seedPlaidItem } = await import('../db/plaidSeed.js');

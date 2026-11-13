@@ -14,7 +14,7 @@ const plaid = vi.fn<() => Promise<void>>();
 vi.mock('./plaid.js', () => ({ refreshAllPlaid: () => plaid() }));
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'kevfin-refresh-'));
+  dir = mkdtempSync(join(tmpdir(), 'persfin-refresh-'));
   process.env.DB_PATH = join(dir, 'test.db');
   vi.resetModules();
   plaid.mockResolvedValue(undefined);

@@ -231,7 +231,7 @@ export function renderReportHtml(m: ReportModel): string {
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KevFin — ${esc(m.quarterLabel)} Report</title>
+<title>PersFin — ${esc(m.quarterLabel)} Report</title>
 <style>
   :root{ --paper:#fbfbf8; --ink:#1d2420; --muted:#5f6862; --rule:#d9ddd5; --pine:#2c4a3e; --sage:#7fa38b;
     --sand:#c9a35a; --slate:#6d7f96; --up:#2f7d4f; --down:#b0473c; }
@@ -393,7 +393,7 @@ export function renderReportHtml(m: ReportModel): string {
 <div class="sheet"><div class="doc">
 
   <header class="head">
-    <div class="titlebox"><p class="brand">KEVFIN</p><h1>Quarterly statement of net worth</h1></div>
+    <div class="titlebox"><p class="brand">PERSFIN</p><h1>Quarterly statement of net worth</h1></div>
     <div class="period"><p class="q">${esc(m.quarterLabel)}</p><p class="d nw">${esc(m.periodLabel)}</p></div>
   </header>
 
@@ -433,7 +433,7 @@ export function renderReportHtml(m: ReportModel): string {
   ${aheadBlock(m)}
 
   <footer class="foot">
-    <div>Generated ${esc(m.generatedAt)} · KevFin, self-hosted · rendered locally, your data never left this machine.${m.asOf ? ` Net worth and cash flow as of ${esc(m.asOf)}; accounts, allocation and tax sections are current holdings.` : ''}</div>
+    <div>Generated ${esc(m.generatedAt)} · PersFin, self-hosted · rendered locally, your data never left this machine.${m.asOf ? ` Net worth and cash flow as of ${esc(m.asOf)}; accounts, allocation and tax sections are current holdings.` : ''}</div>
     <p class="disc">This statement is generated from your own data and is for personal information only.
     It is not investment, tax, or legal advice. Figures are point-in-time estimates drawn from connected
     accounts and look-through holdings, and may differ from official statements.</p>

@@ -6,7 +6,7 @@ import type { NetworkInterfaceInfo } from 'os';
 //  'local+tailscale'  — loopback plus this machine's Tailscale addresses only,
 //                       so the always-on server is reachable from this Mac and
 //                       from the owner's tailnet, but not from the local LAN.
-//                       Set by the launchd agent (KEVFIN_LISTEN).
+//                       Set by the launchd agent (PERSFIN_LISTEN).
 //
 // Tailscale assigns IPv4 addresses from 100.64.0.0/10 (the CGNAT range) and IPv6
 // addresses from fd7a:115c:a1e0::/48. Pure, so it can be tested without a network.

@@ -595,7 +595,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
       }
     } catch (e) {
       console.error('Sync failed:', e);
-      setSyncError("Couldn't reach the KevFin server.");
+      setSyncError("Couldn't reach the PersFin server.");
     } finally {
       refetchAll();
       setRefreshing(false);
@@ -698,13 +698,13 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
 
       {/* Title */}
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px' }}>KevFin</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px' }}>PersFin</h1>
         <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>Net Worth Tracker</p>
       </div>
 
       {serverDown && (
         <div role="alert" style={{ ...bannerStyle, marginBottom: 24 }}>
-          <span>Can't reach the KevFin server — check that it's running, then reload.</span>
+          <span>Can't reach the PersFin server — check that it's running, then reload.</span>
         </div>
       )}
       {syncError && (
@@ -871,7 +871,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
                 ? (history.length > 0
                     ? 'No history in this range — try a wider one or click Backfill.'
                     : 'No history yet — click Backfill to reconstruct it, or use the refresh button (top right) for today.')
-                : historyError ? "Can't reach the KevFin server."
+                : historyError ? "Can't reach the PersFin server."
                 : historyLoading ? 'Loading…'
                 : ''}
             </p>
@@ -926,7 +926,7 @@ export default function Dashboard({ onNavigate, privacy, onTogglePrivacy }: {
                 </div>
               )
               : <p style={{ color: 'var(--muted)', fontSize: 14 }}>
-                  {breakdownError ? "Can't reach the KevFin server." : breakdownLoading ? 'Loading…' : ''}
+                  {breakdownError ? "Can't reach the PersFin server." : breakdownLoading ? 'Loading…' : ''}
                 </p>
           }
 

@@ -10,7 +10,7 @@ import SecContactEmail, { SEC_PRIVACY_NOTE } from './SecContactEmail.tsx';
 
 // Other parts of the app (the dashboard's data hooks) listen for this so they
 // re-pull after Setup changes something — no full page reload needed.
-export const DATA_CHANGED_EVENT = 'kevfin:data-changed';
+export const DATA_CHANGED_EVENT = 'persfin:data-changed';
 function broadcastDataChanged() { window.dispatchEvent(new Event(DATA_CHANGED_EVENT)); }
 
 function GearIcon() {
@@ -55,13 +55,15 @@ function relTime(iso: string | null): string {
   return days === 1 ? 'yesterday' : `${days}d ago`;
 }
 
-// A KevFin backup bundles the full SQLite database together with the browser-side
+// A PersFin backup bundles the full SQLite database together with the browser-side
 // settings that never reach the server — Forecast assumptions, per-account
 // contributions, life events, and the per-tab UI preferences (every `mon.*`
 // localStorage key). Without these a restored copy would lose the entire Forecast
 // configuration, so the backup is a small JSON envelope carrying both. Legacy raw
 // `.db` files are still accepted on restore.
-const BACKUP_FORMAT = 'kevfin-backup';
+const BACKUP_FORMAT = 'persfin-backup';
+// Restore also accepts backups made before the app was renamed.
+const BACKUP_FORMATS = [BACKUP_FORMAT, 'kevfin-backup'];
 
 // Every browser-persisted setting lives under the `mon.` prefix (see
 // usePersistentState); gather them so the backup is complete across all tabs.
@@ -99,7 +101,7 @@ async function saveBlobWithPrompt(blob: Blob, suggestedName: string): Promise<bo
     try {
       const handle = await picker({
         suggestedName,
-        types: [{ description: 'KevFin backup', accept: { 'application/json': ['.json'] } }],
+        types: [{ description: 'PersFin backup', accept: { 'application/json': ['.json'] } }],
       });
       const writable = await handle.createWritable();
       await writable.write(blob);
@@ -318,7 +320,7 @@ function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null;
 // and runs the scheduled jobs (daily sync, snapshot). Only shown in the desktop
 // app on macOS. Switching reloads the window onto the server that now runs.
 function BackgroundRow() {
-  const bridge = typeof window !== 'undefined' ? window.kevfinDesktop : undefined;
+  const bridge = typeof window !== 'undefined' ? window.persfinDesktop : undefined;
   const [state, setState] = useState<{ supported: boolean; enabled: boolean; logDir: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,14 +344,14 @@ function BackgroundRow() {
     <Row
       icon={<IconPower />}
       title="Keep running in the background"
-      tip={`Runs KevFin at login and keeps it running when this window is closed, so the daily sync and scheduled reports happen on time. Logs: ${state.logDir}`}
+      tip={`Runs PersFin at login and keeps it running when this window is closed, so the daily sync and scheduled reports happen on time. Logs: ${state.logDir}`}
       onClick={toggle}
       disabled={busy}
       subtitle={error
         ? <span style={{ color: 'var(--red)' }}>{error}</span>
         : busy ? 'Switching…'
         : state.enabled ? 'On · starts at login, daily sync at 6:00'
-        : 'Off · KevFin runs only while this app is open'}
+        : 'Off · PersFin runs only while this app is open'}
       right={busy ? <Spinner /> : <span style={{ color: state.enabled ? 'var(--green)' : 'var(--muted)' }}>{state.enabled ? 'On' : 'Off'}</span>}
     />
   );
@@ -357,7 +359,7 @@ function BackgroundRow() {
 
 // ---- Sleep check (macOS) ----------------------------------------------------
 // Scheduled jobs only run while the Mac is awake (a missed one runs on wake), so
-// warn when system sleep is on. Read-only: KevFin never changes power settings.
+// warn when system sleep is on. Read-only: PersFin never changes power settings.
 function SleepRow() {
   const { data } = useApi<{ supported: boolean; sleepMinutes: number | null }>('/api/meta/power');
   if (!data?.supported || data.sleepMinutes == null || data.sleepMinutes === 0) return null;
@@ -436,7 +438,7 @@ function WeeklyReportsRow() {
 
 // ---- SEC contact email -------------------------------------------------------
 // Fund holdings (country / stock look-through) come from SEC EDGAR, which rejects
-// anonymous scripts. KevFin declares this address (and only here) in the
+// anonymous scripts. PersFin declares this address (and only here) in the
 // User-Agent of its sec.gov requests; without it no SEC requests are made.
 function SecContactRow({ onChanged }: { onChanged: () => void }) {
   const { data, loading, refetch } = useApi<{ sec?: { email: string | null } }>('/api/config/keys');
@@ -444,7 +446,7 @@ function SecContactRow({ onChanged }: { onChanged: () => void }) {
   const email = data?.sec?.email ?? null;
   return (
     <Row icon={<IconMail />} title="SEC contact email"
-      tip="Declared to sec.gov when KevFin downloads fund holdings"
+      tip="Declared to sec.gov when PersFin downloads fund holdings"
       subtitle={loading ? 'Checking…' : email ?? 'Not set'}
       right={!email && !loading ? <span style={{ color: 'var(--amber)' }}>Needed for fund holdings</span> : undefined}
       onClick={() => setOpen(o => !o)} expanded={open}>
@@ -494,7 +496,7 @@ function ExportForm() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `kevfin-snapshot-${new Date().toISOString().slice(0, 10)}.html`;
+      a.download = `persfin-snapshot-${new Date().toISOString().slice(0, 10)}.html`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -708,7 +710,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
         db: bytesToBase64(db),            // the full SQLite database
       };
       const blob = new Blob([JSON.stringify(bundle)], { type: 'application/json' });
-      const name = `kevfin-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const name = `persfin-backup-${new Date().toISOString().slice(0, 10)}.json`;
       const saved = await saveBlobWithPrompt(blob, name);
       if (saved) {
         setLastBackupAt(new Date().toISOString());
@@ -747,8 +749,8 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
       let settings: Record<string, string> | null = null;
       if (file.name.endsWith('.json') || file.type === 'application/json') {
         const bundle = JSON.parse(await file.text());
-        if (bundle?.format !== BACKUP_FORMAT || typeof bundle.db !== 'string') {
-          throw new Error('Not a valid KevFin backup file.');
+        if (!BACKUP_FORMATS.includes(bundle?.format) || typeof bundle.db !== 'string') {
+          throw new Error('Not a valid PersFin backup file.');
         }
         body = base64ToBytes(bundle.db).buffer as ArrayBuffer;
         settings = (bundle.settings && typeof bundle.settings === 'object') ? bundle.settings : null;
@@ -847,19 +849,14 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
       </Group>
       {feedback('maint')}
 
-      {/* Footer: version + data readout, then the support link. The coffee link is
-          a plain anchor (no third-party script/widget) so KevFin loads nothing from
-          an external host unless the user actively clicks through. */}
+      {/* Footer: version + data readout, then the welcome-guide link. */}
       <div style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
         <div>
-          KevFin{status && ` v${status.version}`}
+          PersFin{status && ` v${status.version}`}
           {c && ` · ${plural(c.accounts, 'account')} · ${plural(c.importedTxns + (c.feedTxns ?? 0), 'transaction')}`}
         </div>
         <div>
           Free and fully local ·{' '}
-          <a href="https://www.buymeacoffee.com/kxl3785" target="_blank" rel="noopener noreferrer"
-            style={{ color: 'var(--accent)', textDecoration: 'none' }}>Buy me a coffee</a>
-          {' · '}
           <button type="button" onClick={() => window.dispatchEvent(new Event(SHOW_WELCOME_EVENT))}
             style={{ background: 'transparent', padding: 0, border: 'none', font: 'inherit', color: 'var(--accent)', fontWeight: 400 }}>
             Welcome guide

@@ -16,6 +16,7 @@ desktop/.claude-tmp/
 # secrets & local config
 .env
 server/.env
+persfin.env
 kevfin.env
 .claude/settings.local.json
 

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { existsSync, renameSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { categorize } from '../util/categorize.js';
@@ -9,7 +10,23 @@ import { initCategoryFile, setCategoryDbProvider } from '../services/categoryFil
 // Falls back to project-root-relative path so the dev workflow is unchanged.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Exported so the backup/restore service can copy and swap the underlying file.
-export const DB_PATH = process.env.DB_PATH ?? path.join(__dirname, '../../../data/kevfin.db');
+export const DB_PATH = process.env.DB_PATH ?? defaultDbPath();
+
+// The app was called KevFin before, and its default database was
+// data/kevfin.db. Rename that file once, so an old install keeps its data.
+// (DELETE journaling, below, means there are no -wal/-shm files to carry.)
+function defaultDbPath(): string {
+  const dir = path.join(__dirname, '../../../data');
+  const file = path.join(dir, 'persfin.db');
+  const legacy = path.join(dir, 'kevfin.db');
+  try {
+    if (!existsSync(file) && existsSync(legacy)) renameSync(legacy, file);
+  } catch (e) {
+    console.error('[db] could not rename data/kevfin.db to data/persfin.db:', e);
+    return legacy;
+  }
+  return file;
+}
 
 let db: Database.Database | undefined;
 

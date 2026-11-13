@@ -9,7 +9,7 @@ import { CATEGORIES, type Category } from '../util/categorize.js';
 import { getDb } from '../db/schema.js';
 
 // --- Proposal shapes -------------------------------------------------------
-// One "proposal" is a single row the model wants to add to one of KevFin's four
+// One "proposal" is a single row the model wants to add to one of PersFin's four
 // entry tables. The model returns these from a document; the user reviews and
 // confirms them before anything is written (see commitProposals).
 export type Proposal =
@@ -71,7 +71,7 @@ const MAX_BYTES = 12 * 1024 * 1024; // decoded; stays under express' 15mb JSON c
 const ALLOWED_EXT = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.csv', '.txt', '.md', '.json']);
 
 const EXTRACT_SYSTEM =
-  'You are a financial-document extraction engine for KevFin, a personal ' +
+  'You are a financial-document extraction engine for PersFin, a personal ' +
   'net-worth tracker and retirement forecaster. You read ONE uploaded document ' +
   'and propose entries that capture its financially-relevant contents — account ' +
   'balances, transactions, or (for a tax return) retirement-planning ' +
@@ -171,7 +171,7 @@ export async function extractFromDocument(input: {
   // original filename. cwd is this dir and Read is scoped to it (Read(./**)), so
   // the model can only open this one file. realpath keeps the cwd and the paths
   // it reads identical (macOS tmpdir is a /var -> /private/var symlink).
-  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'kevfin-ingest-')));
+  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'persfin-ingest-')));
   const safeName = `document${ext}`;
   const filePath = path.join(dir, safeName);
 

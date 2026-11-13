@@ -22,7 +22,7 @@ router.get('/edgar', (_req: Request, res: Response) => {
 // Whether this Mac goes to sleep on its own. The always-on setup runs scheduled
 // jobs via launchd, which only runs a missed job once the Mac wakes — so Setup
 // warns when system sleep is on. Read-only: `pmset -g` needs no admin rights,
-// and KevFin never changes power settings. Not macOS → { supported: false }.
+// and PersFin never changes power settings. Not macOS → { supported: false }.
 router.get('/power', (_req: Request, res: Response) => {
   if (process.platform !== 'darwin') return res.json({ supported: false, sleepMinutes: null });
   execFile('/usr/bin/pmset', ['-g'], { timeout: 3000 }, (err, stdout) => {

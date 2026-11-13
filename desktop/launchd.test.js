@@ -4,13 +4,13 @@ const assert = require('node:assert/strict');
 const { buildAgents, toPlistXml, xmlEscape, LABELS } = require('./launchd.js');
 
 const base = {
-  execPath: '/Applications/KevFin.app/Contents/MacOS/KevFin',
-  entry: '/Applications/KevFin.app/Contents/Resources/server/dist/index.js',
+  execPath: '/Applications/PersFin.app/Contents/MacOS/PersFin',
+  entry: '/Applications/PersFin.app/Contents/Resources/server/dist/index.js',
   port: 3001,
-  dbPath: '/Users/me/Library/Application Support/KevFin/kevfin.db',
-  keysPath: '/Users/me/Library/Application Support/KevFin/kevfin.env',
-  claudeBin: '/Applications/KevFin.app/Contents/Resources/claude/claude',
-  logDir: '/Users/me/Library/Logs/KevFin',
+  dbPath: '/Users/me/Library/Application Support/PersFin/persfin.db',
+  keysPath: '/Users/me/Library/Application Support/PersFin/persfin.env',
+  claudeBin: '/Applications/PersFin.app/Contents/Resources/claude/claude',
+  logDir: '/Users/me/Library/Logs/PersFin',
 };
 
 const byLabel = (agents, label) => agents.find(a => a.label === label);
@@ -23,16 +23,16 @@ test('builds the server agent and one agent per scheduled job', () => {
 
 test('packaged: runs the server under the app binary as Node, kept alive, launchd-scheduled', () => {
   const xml = byLabel(buildAgents({ ...base, packaged: true }), LABELS.server).xml;
-  assert.match(xml, /<key>ProgramArguments<\/key>\s*<array>\s*<string>\/Applications\/KevFin\.app\/Contents\/MacOS\/KevFin<\/string>\s*<string>[^<]*server\/dist\/index\.js<\/string>/);
+  assert.match(xml, /<key>ProgramArguments<\/key>\s*<array>\s*<string>\/Applications\/PersFin\.app\/Contents\/MacOS\/PersFin<\/string>\s*<string>[^<]*server\/dist\/index\.js<\/string>/);
   assert.match(xml, /<key>ELECTRON_RUN_AS_NODE<\/key>\s*<string>1<\/string>/);
-  assert.match(xml, /<key>KEVFIN_SCHEDULER<\/key>\s*<string>launchd<\/string>/);
-  assert.match(xml, /<key>KEVFIN_LISTEN<\/key>\s*<string>local\+tailscale<\/string>/);
+  assert.match(xml, /<key>PERSFIN_SCHEDULER<\/key>\s*<string>launchd<\/string>/);
+  assert.match(xml, /<key>PERSFIN_LISTEN<\/key>\s*<string>local\+tailscale<\/string>/);
   assert.match(xml, /<key>PORT<\/key>\s*<string>3001<\/string>/);
-  assert.match(xml, /<key>DB_PATH<\/key>\s*<string>\/Users\/me\/Library\/Application Support\/KevFin\/kevfin\.db<\/string>/);
+  assert.match(xml, /<key>DB_PATH<\/key>\s*<string>\/Users\/me\/Library\/Application Support\/PersFin\/persfin\.db<\/string>/);
   assert.match(xml, /<key>CLAUDE_BIN<\/key>/);
   assert.match(xml, /<key>RunAtLoad<\/key>\s*<true\/>/);
   assert.match(xml, /<key>KeepAlive<\/key>\s*<true\/>/);
-  assert.match(xml, /<key>StandardErrorPath<\/key>\s*<string>\/Users\/me\/Library\/Logs\/KevFin\/server\.err\.log<\/string>/);
+  assert.match(xml, /<key>StandardErrorPath<\/key>\s*<string>\/Users\/me\/Library\/Logs\/PersFin\/server\.err\.log<\/string>/);
 });
 
 test('dev: runs the server with the system node and without ELECTRON_RUN_AS_NODE', () => {
@@ -56,8 +56,8 @@ test('job agents POST the job endpoint on the configured port at the scheduled t
 
 test('escapes XML special characters in paths', () => {
   assert.equal(xmlEscape(`a&b<c>"d'`), 'a&amp;b&lt;c&gt;&quot;d&apos;');
-  const xml = byLabel(buildAgents({ ...base, packaged: true, dbPath: '/Users/me/R&D <data>/kevfin.db' }), LABELS.server).xml;
-  assert.match(xml, /<string>\/Users\/me\/R&amp;D &lt;data&gt;\/kevfin\.db<\/string>/);
+  const xml = byLabel(buildAgents({ ...base, packaged: true, dbPath: '/Users/me/R&D <data>/persfin.db' }), LABELS.server).xml;
+  assert.match(xml, /<string>\/Users\/me\/R&amp;D &lt;data&gt;\/persfin\.db<\/string>/);
 });
 
 test('writes a complete plist document', () => {

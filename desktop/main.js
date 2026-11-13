@@ -1,4 +1,4 @@
-// KevFin desktop (Electron main process).
+// PersFin desktop (Electron main process).
 //
 // Wraps the existing Express server + built client. Two ways to run the server:
 //  - Background service (Setup → "Keep running in the background"): launchd runs
@@ -40,13 +40,13 @@ function bundledClaudeBin() {
   return null;
 }
 
-// --- tiny config store (userData/kevfin-desktop.json) ---------------------
+// --- tiny config store (userData/persfin-desktop.json) ---------------------
 function configPath() {
-  return path.join(app.getPath('userData'), 'kevfin-desktop.json');
+  return path.join(app.getPath('userData'), 'persfin-desktop.json');
 }
 function defaultConfig() {
   const dir = app.getPath('userData');
-  return { dbPath: path.join(dir, 'kevfin.db'), keysPath: path.join(dir, 'kevfin.env'), port: 3001 };
+  return { dbPath: path.join(dir, 'persfin.db'), keysPath: path.join(dir, 'persfin.env'), port: 3001 };
 }
 function loadConfig() {
   try { return { ...defaultConfig(), ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) }; }
@@ -59,12 +59,67 @@ function saveConfig(cfg) {
   } catch (e) { console.error('[desktop] saveConfig failed:', e); }
 }
 
+// --- one-time move from the old app name (KevFin) --------------------------
+// The app was called KevFin. Its data folder was ~/Library/Application
+// Support/KevFin (kevfin.db, kevfin.env, categories.json, backups/) and its
+// launchd agents were com.kevfin.*. On the first start under the new name:
+//  1. stop and remove the old agents (they hold the old database open),
+//  2. move the data from the old default folder into this app's folder, with
+//     the new file names. Database or keys files the user had moved to a
+//     custom folder stay where they are; the new config points at them,
+//  3. if the old background service was on, install the new one.
+const LEGACY_LABELS = ['com.kevfin.server', 'com.kevfin.daily-sync', 'com.kevfin.snapshot'];
+
+function migrateFromKevFin() {
+  let wasBackground = false;
+  if (process.platform === 'darwin') {
+    for (const label of LEGACY_LABELS) {
+      if (!fs.existsSync(agentFile(label))) continue;
+      if (label === LEGACY_LABELS[0]) wasBackground = true;
+      bootout(label);
+      try { fs.rmSync(agentFile(label), { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  const newDir = app.getPath('userData');
+  const oldDir = ['KevFin', 'kevfin-desktop'].map(n => path.join(app.getPath('appData'), n))
+    .find(d => d !== newDir && fs.existsSync(d));
+  if (oldDir && !fs.existsSync(configPath())) {
+    let old = {};
+    try { old = JSON.parse(fs.readFileSync(path.join(oldDir, 'kevfin-desktop.json'), 'utf8')); } catch { /* defaults */ }
+    const cfg = defaultConfig();
+    if (old.port) cfg.port = old.port;
+    const move = (from, to) => {
+      try { if (fs.existsSync(from) && !fs.existsSync(to)) fs.renameSync(from, to); }
+      catch (e) { console.error(`[desktop] could not move ${from}:`, e.message); }
+    };
+    fs.mkdirSync(newDir, { recursive: true });
+    const oldDb = path.join(oldDir, 'kevfin.db');
+    if (!old.dbPath || old.dbPath === oldDb) {
+      move(oldDb, cfg.dbPath);
+      move(path.join(oldDir, 'categories.json'), path.join(newDir, 'categories.json'));
+      move(path.join(oldDir, 'backups'), path.join(newDir, 'backups'));
+    } else {
+      cfg.dbPath = old.dbPath;
+    }
+    const oldKeys = path.join(oldDir, 'kevfin.env');
+    if (!old.keysPath || old.keysPath === oldKeys) move(oldKeys, cfg.keysPath);
+    else cfg.keysPath = old.keysPath;
+    saveConfig(cfg);
+  }
+
+  if (wasBackground) {
+    try { installBackground(loadConfig()); }
+    catch (e) { console.error('[desktop] could not reinstall the background service:', e.message); }
+  }
+}
+
 // --- pick a free port (preferred first, else any) -------------------------
 function getFreePort(preferred) {
   return new Promise((resolve) => {
     const srv = net.createServer();
     srv.once('error', () => resolve(getFreePort(0)));
-    // Bind 127.0.0.1 like the server does (KEVFIN_LISTEN=local+tailscale): a
+    // Bind 127.0.0.1 like the server does (PERSFIN_LISTEN=local+tailscale): a
     // wildcard probe could succeed beside a server bound to 127.0.0.1 only and
     // report a busy port as free.
     srv.listen(preferred || 0, '127.0.0.1', () => {
@@ -145,7 +200,7 @@ async function startServer() {
 function createWindow(port) {
   mainWindow = new BrowserWindow({
     width: 1320, height: 900, minWidth: 900, minHeight: 600,
-    title: 'KevFin',
+    title: 'PersFin',
     backgroundColor: '#0b0d12',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -165,7 +220,7 @@ function stopServer() {
 
 // --- background service (launchd) ----------------------------------------
 const AGENT_DIR = path.join(os.homedir(), 'Library', 'LaunchAgents');
-const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'KevFin');
+const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'PersFin');
 const agentFile = (label) => path.join(AGENT_DIR, `${label}.plist`);
 const guiDomain = () => `gui/${process.getuid()}`;
 
@@ -248,16 +303,17 @@ function reloadWindow() {
 
 app.whenReady().then(async () => {
   try {
+    migrateFromKevFin();
     const port = await ensureServer();
     createWindow(port);
   } catch (e) {
-    dialog.showErrorBox('KevFin failed to start', String((e && e.stack) || e));
+    dialog.showErrorBox('PersFin failed to start', String((e && e.stack) || e));
     app.quit();
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length > 0) return;
     // The child server stops with the last window; start it again if needed.
-    ensureServer().then(createWindow).catch(e => dialog.showErrorBox('KevFin failed to start', String(e)));
+    ensureServer().then(createWindow).catch(e => dialog.showErrorBox('PersFin failed to start', String(e)));
   });
 });
 
@@ -265,7 +321,7 @@ app.on('window-all-closed', () => { stopServer(); });
 app.on('before-quit', stopServer);
 
 // --- IPC: background service (used by Setup → Sync) -------------------------
-ipcMain.handle('kevfin:getBackground', () => ({
+ipcMain.handle('persfin:getBackground', () => ({
   supported: process.platform === 'darwin',
   enabled: backgroundEnabled(),
   logDir: LOG_DIR,
@@ -273,7 +329,7 @@ ipcMain.handle('kevfin:getBackground', () => ({
 
 // Switch between the background (launchd) server and the app's own child
 // server. The window reloads on the server that is now running.
-ipcMain.handle('kevfin:setBackground', async (_e, enabled) => {
+ipcMain.handle('persfin:setBackground', async (_e, enabled) => {
   if (process.platform !== 'darwin') return { ok: false, error: 'Only available on macOS.' };
   const cfg = loadConfig();
   const port = cfg.port || 3001;
@@ -305,12 +361,12 @@ ipcMain.handle('kevfin:setBackground', async (_e, enabled) => {
 });
 
 // --- IPC: storage location (used by the Setup → Storage panel) ------------
-ipcMain.handle('kevfin:getPaths', () => {
+ipcMain.handle('persfin:getPaths', () => {
   const c = loadConfig();
   return { dbPath: c.dbPath, keysPath: c.keysPath, port: currentPort };
 });
 
-ipcMain.handle('kevfin:chooseDir', async (_e, which) => {
+ipcMain.handle('persfin:chooseDir', async (_e, which) => {
   const r = await dialog.showOpenDialog(mainWindow, {
     title: which === 'keys' ? 'Choose a folder for the keys file' : 'Choose a folder for the database',
     message: 'Pick a folder — a cloud-synced or NAS folder works for syncing across machines.',
@@ -321,7 +377,7 @@ ipcMain.handle('kevfin:chooseDir', async (_e, which) => {
 });
 
 // Move/point the DB and/or keys file to the chosen folder(s), persist, relaunch.
-ipcMain.handle('kevfin:applyAndRelaunch', async (_e, next) => {
+ipcMain.handle('persfin:applyAndRelaunch', async (_e, next) => {
   const cfg = loadConfig();
   const updated = { ...cfg };
 
@@ -341,11 +397,11 @@ ipcMain.handle('kevfin:applyAndRelaunch', async (_e, next) => {
 
   try {
     if (next.dbDir) {
-      updated.dbPath = relocate(cfg.dbPath, next.dbDir, 'kevfin.db');
+      updated.dbPath = relocate(cfg.dbPath, next.dbDir, 'persfin.db');
       // The personal category file lives next to the database; carry it along.
       relocate(path.join(path.dirname(cfg.dbPath), 'categories.json'), next.dbDir, 'categories.json');
     }
-    if (next.keysDir) updated.keysPath = relocate(cfg.keysPath, next.keysDir, 'kevfin.env');
+    if (next.keysDir) updated.keysPath = relocate(cfg.keysPath, next.keysDir, 'persfin.env');
   } catch (e) {
     return { ok: false, error: e.message };
   }

@@ -7,7 +7,7 @@ import type { RecurringItem } from './recurring.js';
 
 // DB_PATH must be set before the schema module loads, so modules that reach it
 // are imported dynamically after it is set.
-const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-weekly-'));
+const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-weekly-'));
 process.env.DB_PATH = path.join(TMP, 'weekly.db');
 const weekly = await import('./weeklyReport.js');
 const { renderWeeklyHtml, renderWeeklyText } = await import('../util/weeklyRender.js');

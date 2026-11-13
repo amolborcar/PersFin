@@ -1,12 +1,12 @@
-# KevFin — advanced guide
+# PersFin — advanced guide
 
 The [main README](../README.md) covers installing the desktop app. This page is for
 everything else: Intel Macs, how the pieces work, and developing it.
 
-> ⚠️ **KevFin has no login screen.** Keep it on your home network or behind
+> ⚠️ **PersFin has no login screen.** Keep it on your home network or behind
 > something like Tailscale — **don't expose it directly to the internet.**
 
-KevFin runs on macOS only. Docker, NAS and Windows support were removed.
+PersFin runs on macOS only. Docker, NAS and Windows support were removed.
 
 ## Intel Mac
 
@@ -57,7 +57,7 @@ Produces a single **password-protected HTML file** capturing all current data �
 net worth, accounts, allocation, performance, and budget — frozen at that moment.
 
 - **Self-contained & offline.** The file embeds its own viewer; the recipient just
-  opens it in any browser and types the password. No server, no KevFin install.
+  opens it in any browser and types the password. No server, no PersFin install.
 - **Encrypted client-side.** The payload is AES-256-GCM encrypted with a key derived
   from your password via PBKDF2 (600k iterations). The password is used once to
   encrypt and is never stored; the data is unreadable without it.
@@ -72,7 +72,7 @@ to the live app.
 A backup is the **live SQLite database**, for migration or disaster recovery —
 different from the read-only snapshot above.
 
-- **Download backup** — a consistent full copy of `kevfin.db`.
+- **Download backup** — a consistent full copy of `persfin.db`.
 - **Restore from backup** — upload a `.db`; it's validated, and your current database
   is automatically copied aside first as a safety net before the swap.
 - **Erase all data** — a full reset that empties every user table (API keys in
@@ -132,8 +132,8 @@ changes), and how many transactions still need a category.
   as "at risk".
 - **AI summary** (off by default) adds a few sentences from your local Claude
   Code. It sends only the week's totals by category.
-- Set `KEVFIN_PUBLIC_URL` (for example your Tailscale address) so the report's
-  "Review them" link opens KevFin from another device.
+- Set `PERSFIN_PUBLIC_URL` (for example your Tailscale address) so the report's
+  "Review them" link opens PersFin from another device.
 
 ## How the AI assistant works
 
@@ -143,8 +143,8 @@ whatever Claude login exists on that machine, so it draws on your own Claude
 subscription, on your own computer. No credentials are stored in this repo, and
 nothing routes to anyone else's account.
 
-Where KevFin looks for the `claude` binary (`server/src/services/assistant.ts`):
-1. `CLAUDE_BIN` in the keys file (`server/.env`, or the file set by `KEVFIN_ENV_PATH`)
+Where PersFin looks for the `claude` binary (`server/src/services/assistant.ts`):
+1. `CLAUDE_BIN` in the keys file (`server/.env`, or the file set by `PERSFIN_ENV_PATH`)
 2. a `claude` on your `PATH`
 3. the binary bundled in the macOS Claude desktop app
 
@@ -154,7 +154,7 @@ Every run is sandboxed: chat and document import may only **read** files inside
 their own private temporary folder, the quarterly-report run gets no tools at all,
 shell / write / web tools are denied, your own MCP servers are ignored, and runs
 are killed on timeout or when you close the request. The model only sees the
-compact financial summary KevFin builds for it.
+compact financial summary PersFin builds for it.
 
 ### AI category suggestions
 
@@ -209,7 +209,7 @@ to explore with fictional numbers first.
 
 ### Environment variables
 
-All are optional — KevFin runs without any keys; you just won't have live data for
+All are optional — PersFin runs without any keys; you just won't have live data for
 the corresponding feature until they're set. Institutions themselves are linked from
 the dashboard (a SimpleFIN setup token or the Plaid Link flow); the Plaid app
 credentials below only need to be set if you use Plaid-linked institutions.
@@ -219,7 +219,7 @@ credentials below only need to be set if you use Plaid-linked institutions.
 | `PORT` | Server port (default `3001`). |
 | `OPENWEBNINJA_KEY` | [OpenWeb Ninja](https://www.openwebninja.com) API key for property values (tried first). |
 | `APILLOW_KEY` | [APILLOW](https://apillow.co) API key — fallback for property values when OpenWeb Ninja is unset or over its plan limit. |
-| `SEC_CONTACT_EMAIL` | Contact email KevFin declares to SEC EDGAR when fetching fund holdings (country/stock look-through). SEC rejects anonymous tools; without it no SEC requests are made. Also settable in the app (Setup → SEC contact email). |
+| `SEC_CONTACT_EMAIL` | Contact email PersFin declares to SEC EDGAR when fetching fund holdings (country/stock look-through). SEC rejects anonymous tools; without it no SEC requests are made. Also settable in the app (Setup → SEC contact email). |
 | `SEC_EDGAR_UA` | Advanced: override the whole SEC User-Agent (`Name email`). |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV` | Plaid credentials (only needed for Plaid-linked institutions). |
 | `CLAUDE_BIN` | Override path to the Claude Code binary (only if auto-detection fails). |
@@ -230,7 +230,7 @@ credentials below only need to be set if you use Plaid-linked institutions.
 
 To explore the app — or retake the README screenshots — without touching any real
 data, seed a throwaway database. The seeder **refuses to run unless `DB_PATH` is set**,
-so it can never overwrite `data/kevfin.db`:
+so it can never overwrite `data/persfin.db`:
 
 ```bash
 cd server

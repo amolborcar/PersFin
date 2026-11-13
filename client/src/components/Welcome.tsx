@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
 // First-run welcome / onboarding overlay, aimed at non-technical users. It shows
-// automatically the first time KevFin is opened on a machine, and can be reopened
+// automatically the first time PersFin is opened on a machine, and can be reopened
 // any time from Setup (which dispatches SHOW_WELCOME_EVENT).
-export const SHOW_WELCOME_EVENT = 'kevfin:show-welcome';
+export const SHOW_WELCOME_EVENT = 'persfin:show-welcome';
 
 // localStorage flag set once the guide is dismissed, so it only auto-appears on
 // the very first visit. Lives under the same `mon.` prefix the rest of the app
@@ -14,7 +14,7 @@ const STEPS: { icon: string; title: string; body: string }[] = [
   {
     icon: '🔒',
     title: 'Your data stays private',
-    body: 'KevFin runs on your own computer. Your data is stored only on this computer. Price lookups send only ticker symbols.',
+    body: 'PersFin runs on your own computer. Your data is stored only on this computer. Price lookups send only ticker symbols.',
   },
   {
     icon: '🔗',
@@ -33,7 +33,7 @@ const STEPS: { icon: string; title: string; body: string }[] = [
   },
 ];
 
-// Page 2 — how to obtain the keys/tokens each connection needs. KevFin uses YOUR
+// Page 2 — how to obtain the keys/tokens each connection needs. PersFin uses YOUR
 // own provider credentials, so the data path stays yours end-to-end. Steps mirror
 // the in-app flows: ConnectPlaid ("+ Plaid") and ClaudeLoginGate (the AI login
 // panel).
@@ -49,11 +49,11 @@ const CONNECTIONS: {
     icon: '🏦',
     title: 'Plaid',
     cost: 'Free developer signup',
-    body: 'Links most banks and brokerages. KevFin connects with your own Plaid production keys, so the connection belongs to you.',
+    body: 'Links most banks and brokerages. PersFin connects with your own Plaid production keys, so the connection belongs to you.',
     steps: [
       'Create a free Plaid developer account, then request production access (Plaid grants it for personal use).',
       'In the Plaid dashboard, open Developers → Keys and copy your Client ID and your production Secret.',
-      'In KevFin, go to Dashboard → Financial Accounts → Manage connections, click “+ Plaid”, paste both keys, and Save — then choose your institution in the window that opens.',
+      'In PersFin, go to Dashboard → Financial Accounts → Manage connections, click “+ Plaid”, paste both keys, and Save — then choose your institution in the window that opens.',
     ],
     link: { href: 'https://dashboard.plaid.com/developers/keys', label: 'Get your Plaid keys →' },
   },
@@ -64,7 +64,7 @@ const CONNECTIONS: {
     body: 'Optional. Powers the chat assistant and document import. It runs a locally-installed Claude Code on your own Claude subscription and only ever sees a compact financial summary — never your files.',
     steps: [
       'Install Claude Code on this computer (or point the server at it by setting CLAUDE_BIN in server/.env).',
-      'Open any AI feature in KevFin and click “Log in to Claude”, then type /login in the terminal that opens.',
+      'Open any AI feature in PersFin and click “Log in to Claude”, then type /login in the terminal that opens.',
       'You can instead run “claude setup-token” in a terminal and paste the token into the login panel.',
     ],
     link: { href: 'https://docs.claude.com/en/docs/claude-code/overview', label: 'Install Claude Code →' },
@@ -106,7 +106,7 @@ export default function Welcome() {
         alignItems: 'flex-start', justifyContent: 'center',
         padding: '6vh 16px 16px', overflowY: 'auto',
       }}>
-      <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Welcome to KevFin"
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Welcome to PersFin"
         style={{
           width: '100%', maxWidth: 560,
           background: 'var(--surface)', border: '1px solid var(--border)',
@@ -116,7 +116,7 @@ export default function Welcome() {
           <>
             <div style={{ textAlign: 'center', marginBottom: 22 }}>
               <div style={{ fontSize: 40, marginBottom: 8 }} aria-hidden>👋</div>
-              <h2 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.5px' }}>Welcome to KevFin</h2>
+              <h2 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.5px' }}>Welcome to PersFin</h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 6, lineHeight: 1.5 }}>
                 Your private net-worth tracker — banks, investments, budgeting, and a
                 retirement forecast, all in one place that runs on your own computer.

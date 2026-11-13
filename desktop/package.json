@@ -1,8 +1,8 @@
 {
-  "name": "kevfin-desktop",
+  "name": "persfin-desktop",
   "version": "1.11.0",
   "private": true,
-  "description": "KevFin desktop app — an Electron wrapper around the local server + client.",
+  "description": "PersFin desktop app — an Electron wrapper around the local server + client.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

@@ -92,7 +92,7 @@ export default function ConnectPlaid({ onSuccess }: Props) {
       const res = await fetch('/api/config/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // KevFin only works against Plaid production — sandbox/development can't
+        // PersFin only works against Plaid production — sandbox/development can't
         // link real institutions, so it's fixed here rather than offered.
         body: JSON.stringify({ plaid_client_id: clientId.trim(), plaid_secret: secret.trim(), plaid_env: 'production' }),
       });

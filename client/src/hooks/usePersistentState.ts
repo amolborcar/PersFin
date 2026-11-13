@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 
 // Fired on every persisted write so other hooks/components watching the same key
 // in this tab update live (the native `storage` event only fires across tabs).
-const PERSIST_EVENT = 'kevfin:persist';
+const PERSIST_EVENT = 'persfin:persist';
 
 interface PersistDetail { key: string; raw: string }
 

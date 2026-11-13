@@ -32,7 +32,7 @@ router.post('/snapshot', async (req: Request, res: Response) => {
 
   try {
     const html = await exportSnapshotHtml(password, expiresAt);
-    const filename = `kevfin-snapshot-${new Date().toISOString().slice(0, 10)}.html`;
+    const filename = `persfin-snapshot-${new Date().toISOString().slice(0, 10)}.html`;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(html);

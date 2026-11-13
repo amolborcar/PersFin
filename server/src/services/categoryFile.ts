@@ -9,7 +9,7 @@ import {
 
 // The owner's personal category file — the source of truth for the category
 // list. It lives next to the database (data/categories.json by default; data/ is
-// git-ignored, so it is never committed) or at KEVFIN_CATEGORIES_PATH.
+// git-ignored, so it is never committed) or at PERSFIN_CATEGORIES_PATH.
 //
 //   { "version": 1,
 //     "groups": [ { "name": "Food & Dining", "color": "#f472b6",
@@ -247,7 +247,7 @@ let watching = '';
 let report: CategoryFileReport = { path: '', loadedAt: null, error: null, warnings: [] };
 
 export function categoryFilePath(dbPath: string): string {
-  return process.env.KEVFIN_CATEGORIES_PATH || path.join(path.dirname(dbPath), 'categories.json');
+  return process.env.PERSFIN_CATEGORIES_PATH || path.join(path.dirname(dbPath), 'categories.json');
 }
 export function getCategoryFileReport(): CategoryFileReport { return report; }
 

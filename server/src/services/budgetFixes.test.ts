@@ -11,7 +11,7 @@ import type { AddressInfo } from 'net';
  * clock, seeded Plaid cache) but with its own small fixture.
  */
 
-const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-fixes-'));
+const TMP = mkdtempSync(path.join(tmpdir(), 'persfin-fixes-'));
 process.env.DB_PATH = path.join(TMP, 'fixes.db');
 
 const { seedPlaidItem } = await import('../db/plaidSeed.js');
