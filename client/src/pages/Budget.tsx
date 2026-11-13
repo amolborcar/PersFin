@@ -199,12 +199,16 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
   }
   // Open/close the manage panel. Opening snapshots the current category state so
   // edits made while open can be undone in one click, and loads the group list.
+  // Where the personal category file lives and what its last load reported.
+  const [catFile, setCatFile] = useState<{ path: string; error: string | null; warnings: string[] } | null>(null);
   async function openManage() {
     setManageOpen(true);
     try { setCatSnapshot(await (await fetch('/api/budget/categories/state')).json()); }
     catch { setCatSnapshot(null); }
     try { setGroupNames(await (await fetch('/api/budget/categories/groups')).json()); }
     catch { /* keep prior */ }
+    try { setCatFile(await (await fetch('/api/budget/categories/file')).json()); }
+    catch { setCatFile(null); }
   }
   // Reclassify a category into another group, or reorder it within its group.
   async function setCatGroup(canonical: string, group: string) {
@@ -501,7 +505,18 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
             {manageOpen && (
               <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <p style={{ fontSize: 11, color: 'var(--muted)' }}>Grouped by area, sorted A–Z. Rename inline, pick a group to reclassify, or × to remove — changes apply across transactions, charts and the cash-flow Sankey.</p>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    <p>Grouped by area, sorted A–Z. Rename inline, pick a group to reclassify, or × to remove — changes apply across transactions, charts and the cash-flow Sankey.</p>
+                    {catFile && (
+                      <p style={{ marginTop: 4 }} title="You can also edit this file directly; changes apply within a few seconds. Add a &quot;hint&quot; to a category to tell the AI what belongs in it.">
+                        Saved in your category file: <code style={{ fontSize: 10.5 }}>{catFile.path}</code>
+                      </p>
+                    )}
+                    {catFile?.error && (
+                      <p role="alert" style={{ marginTop: 4, color: 'var(--red)' }}>The file has an error and was not applied: {catFile.error}</p>
+                    )}
+                    {catFile?.warnings?.map(w => <p key={w} style={{ marginTop: 4, color: 'var(--amber)' }}>{w}</p>)}
+                  </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <button className="btn-ghost" disabled={catBusy || catSnapshot == null} onClick={undoCats}
                       title="Revert every change made since you opened this panel" style={{ fontSize: 11, padding: '4px 9px' }}>↩ Undo changes</button>
@@ -523,7 +538,8 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
                             <div key={canon} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 0' }}>
                               <span style={{ width: 20, textAlign: 'center', flexShrink: 0 }}>{c.emoji}</span>
                               <input key={`${canon}:${c.name}`} defaultValue={c.name}
-                                onBlur={e => { const v = e.target.value.trim(); if (v && v !== c.name && c.canonical) renameCat(c.canonical, v); }}
+                                readOnly={PROTECTED.has(canon)} title={PROTECTED.has(canon) ? 'System category — its name is fixed' : undefined}
+                                onBlur={e => { const v = e.target.value.trim(); if (v && v !== c.name && c.canonical && !PROTECTED.has(canon)) renameCat(c.canonical, v); }}
                                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 style={{ flex: 1, minWidth: 0, padding: '3px 6px', fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)' }} />
                               <select value={g.name} onChange={e => setCatGroup(canon, e.target.value)} title="Reclassify into another group"

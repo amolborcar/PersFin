@@ -16,7 +16,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | 2 Remove real estate | Done, including the Mortgage category (migration 9). Build passes; tests pass (server 349, client 143). |
 | 3 macOS only | Done. Build passes; tests pass (server 349, client 143). The `.dmg` build was not run (it needs a macOS runner or the Mac mini). |
 | 3b launchd | Done in code; not yet tested on the Mac mini. Build passes; tests pass (server 363, client 143, desktop 6). Test steps: `DESKTOP.md` → "Keep running in the background". |
-| 4–9 | Not started |
+| 4 Category file | Done. Build passes; tests pass (server 378, client 143, desktop 6). |
+| 5–9 | Not started |
 
 Update this table at the end of each phase.
 
@@ -216,6 +217,25 @@ Implementation (done):
 6. When a category with transactions or rules is deleted or renamed, move them
    to `fallback` and show a warning.
 7. Tests: validation, missing file, rename and delete of rules.
+
+Implementation (done) — differences from the steps above:
+- The file is next to the database (`data/categories.json` by default, or
+  `KEVFIN_CATEGORIES_PATH`), so a moved data folder carries it. Template:
+  `categories.example.json` (a test keeps it equal to the built-in defaults).
+- No `system` block: the six system categories (Paychecks, Other Income,
+  Dividends & Capital Gains, Transfers, Credit Card Payment, Miscellaneous) keep
+  fixed names because the budget logic uses them in many places. The loader adds
+  any that are missing. Categories in the group named "Income" count as income.
+- No `monthlyTarget` in the file: budget targets stay in the app (Budget page).
+- New optional `aliases` per category: an in-app rename keeps the old name as an
+  alias, so automatic categorization and imports that produce the built-in name
+  still land in the renamed category. Old display labels in an existing
+  database become real names (with aliases) on first start.
+- The file is watched (2 s polling). An invalid file is not applied; the error
+  and any warnings show in Budget → Manage categories and in
+  `GET /api/budget/categories/file`.
+- Restoring a backup re-creates the file from the restored database (the old
+  file is kept as `categories.json.pre-restore-<time>.bak`).
 
 ## Phase 5: AI categorization
 

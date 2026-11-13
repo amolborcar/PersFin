@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { getDb, closeDb, DB_PATH } from '../db/schema.js';
 import { clearPlaidCaches } from './plaid.js';
+import { categoryFilePath } from './categoryFile.js';
 
 // Operational data-lifecycle actions for the Setup hub: full-database backup,
 // restore, reset, and a system-status read. These are deliberately separate
@@ -116,6 +117,13 @@ export async function restoreFromBuffer(buf: Buffer): Promise<Record<string, num
   copyFileSync(incoming, DB_PATH);
   for (const sfx of ['-wal', '-shm', '-journal']) rmSync(DB_PATH + sfx, { force: true });
   rmSync(incoming, { force: true });
+  // The backup's categories win: keep the current category file as a .bak copy
+  // and let the reopen write a new one from the restored database.
+  const catFile = categoryFilePath(DB_PATH);
+  if (existsSync(catFile)) {
+    copyFileSync(catFile, `${catFile}.pre-restore-${Date.now()}.bak`);
+    rmSync(catFile, { force: true });
+  }
 
   // The in-memory provider caches belong to the old DB; without this they'd keep
   // serving its transactions/holdings until the next restart.

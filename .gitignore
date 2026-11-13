@@ -31,3 +31,8 @@ data/
 
 # downloaded desktop installers
 installers/
+
+# Personal category file (lives in data/ by default; never committed).
+# categories.example.json is the committed template.
+categories.json
+categories.json.*

@@ -2,12 +2,12 @@ import { getDb } from '../db/schema.js';
 import { syncFeedTransactions, readFeedTransactions, FEED_WINDOW_DAYS, type RawTxn } from './feedStore.js';
 import { getAllPlaidTransactions } from './plaid.js';
 import {
-  TAXONOMY, CATEGORIES, suggestEmoji, normalizeImportedCategory, ensureImportedCategories,
+  suggestEmoji, normalizeImportedCategory, isIncomeCategory, resolveAlias, INCOME_GROUP,
   type Category, type CatDef, type CatGroup,
 } from './taxonomy.js';
 import {
   getCategoryLabeler, getActiveCategories, getCategoryGroupMap,
-  defaultGroupOf, groupColorOf, GROUP_COLOR, TAX_EMOJI,
+  defaultGroupOf, groupColorOf, addImportedCategories,
 } from './categories.js';
 
 // Bank/card transaction feed for budgeting, from Plaid (normalized to the
@@ -26,16 +26,19 @@ async function getFeedTransactions(): Promise<RawTxn[]> {
   return readFeedTransactions(db);
 }
 
-// The taxonomy constants and pure category helpers live in taxonomy.ts
-// (dependency-free, so the versioned migration runner can use them without an
-// import cycle). Re-exported here so consumers keep importing from budget.
-export { TAXONOMY, CATEGORIES, suggestEmoji, normalizeImportedCategory } from './taxonomy.js';
+// The taxonomy and pure category helpers live in taxonomy.ts (dependency-free,
+// so the versioned migration runner can use them without an import cycle); the
+// live taxonomy comes from the personal category file. Re-exported here so
+// consumers keep importing from budget.
+export { DEFAULT_TAXONOMY, DEFAULT_CATEGORIES, getTaxonomy, suggestEmoji, normalizeImportedCategory } from './taxonomy.js';
 export type { Category, CatDef, CatGroup } from './taxonomy.js';
 
 // Category management (labeler, groups, active list, snapshot/undo/reset)
 // lives in categories.ts; re-exported so routes keep importing from budget.
 export * from './categories.js';
-const INCOME_SET = new Set(TAXONOMY.find(g => g.name === 'Income')!.categories.map(c => c.name));
+// Income categories: the category file's Income group plus the system income
+// categories. Looked up live, so an edit to the file applies without a restart.
+const INCOME_SET = { has: isIncomeCategory };
 // Internal money movement — excluded from spending AND income everywhere. Credit
 // Card Payment is its own visible type but, like Transfers, never counts toward
 // the budget (paying a card is moving money, not new spending).
@@ -671,7 +674,7 @@ export function importTransactions(csv: string): { imported: number; skipped: nu
       info.changes > 0 ? imported++ : skipped++;
     }
   })();
-  ensureImportedCategories(db, [...csvCats]); // keep any new Monarch categories from this import
+  addImportedCategories([...csvCats]); // keep any new Monarch categories from this import
   return { imported, skipped };
 }
 
@@ -720,6 +723,9 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
       .map(a => [a.id, a.category])
   );
   const activeSet = new Set(getActiveCategories());
+  // A name automatic categorization (or an import) produces may be the built-in
+  // name of a category the owner renamed: map it to the current name.
+  const current = (c: string): string => (activeSet.has(c) ? c : resolveAlias(c) ?? c);
   const isSignFlipped = getSignFlipMatcher(); // merchant → whether its sign is reversed
   const ruledIds = new Set<string>(); // txns whose category the user set explicitly
   const sfRaw = (await getFeedTransactions()).filter(t => acctCat.get(t.accountId) !== 'brokerage');
@@ -728,7 +734,7 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     const date = new Date(t.posted * 1000).toISOString().slice(0, 10);
     const flip = isSignFlipped(m);
     const amt = flip ? -t.amount : t.amount;
-    const suggested = autoCategory(t.payee, t.description, amt); // rule-based guess, pre-override
+    const suggested = current(autoCategory(t.payee, t.description, amt)); // rule-based guess, pre-override
     const rule = pickRule(t.id, m, `${t.payee} ${t.description}`.toLowerCase(), amt);
     const ruled = rule?.category as Category | undefined;
     if (ruled != null) ruledIds.add(t.id);
@@ -789,11 +795,12 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     addEntry({ ...dup, consumed: false, importedAcct });
     const flip = isSignFlipped(r.merchant);
     const amt = flip ? -r.amount : r.amount;
-    const suggested = autoCategory(r.payee, '', amt);
+    const suggested = current(autoCategory(r.payee, '', amt));
     // An explicit per-row recategorization (cat_edited) is the most specific
     // user signal — it wins over merchant-level rules.
     const edited = r.cat_edited && r.category
       ? [...activeSet].find(a => a.toLowerCase() === normalizeImportedCategory(r.category!).toLowerCase())
+        ?? resolveAlias(normalizeImportedCategory(r.category!))
       : undefined;
     const rule = edited ? undefined : pickRule(r.id, r.merchant, `${r.payee}`.toLowerCase(), amt);
     const ruled = edited ?? rule?.category;
@@ -802,7 +809,7 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     let ruleSource: RuleSource = rule?.kind ?? (edited ? 'import' : 'auto');
     if (!cat && r.category) {
       const norm = normalizeImportedCategory(r.category); // honor Monarch's category (aliases internal-money labels → Transfers)
-      cat = [...activeSet].find(a => a.toLowerCase() === norm.toLowerCase());
+      cat = [...activeSet].find(a => a.toLowerCase() === norm.toLowerCase()) ?? resolveAlias(norm);
       if (cat) ruleSource = 'import';
     }
     if (!cat) cat = suggested;
@@ -1404,11 +1411,10 @@ export interface CashFlow {
 }
 export interface CashTxn { id: string; date: string; payee: string; merchant: string; account: string; category: string; suggested: string; amount: number; description: string; memo: string; postedAt: number; transactedAt: number | null; amountEdited?: boolean }
 
-const INCOME_COLOR = GROUP_COLOR['Income'] ?? '#22b8cf';
+const incomeColor = () => groupColorOf(INCOME_GROUP);
 const SAVINGS_COLOR = '#4ade80';
-// Expense category → display group + group colors are derived from TAXONOMY
-// (CATEGORY_GROUP / GROUP_COLOR, defined at the top). Unmapped categories fall
-// into the "Other" group.
+// Expense category → display group + group colors come from the category file
+// (see categories.ts). Unmapped categories fall into the "Custom" group.
 
 function rangeBounds(range: string): { start: string | null; label: string } {
   const now = new Date();
@@ -1500,17 +1506,17 @@ export async function getCashFlow(range = '12m', detail = false): Promise<CashFl
     return i;
   };
 
-  const incomeIdx = add('hub', 'Income', INCOME_COLOR, 1, 'hub', { type: 'income' });
+  const incomeIdx = add('hub', 'Income', incomeColor(), 1, 'hub', { type: 'income' });
 
   // Tier 0: income sources — top employers (payroll variants already merged),
   // remainder pooled into "Other income".
   for (const s of incomeSources.slice(0, SOURCE_TOP)) {
-    const si = add('src:' + s.key, s.label, INCOME_COLOR, 0, 'source', { type: 'source', value: s.key });
+    const si = add('src:' + s.key, s.label, incomeColor(), 0, 'source', { type: 'source', value: s.key });
     links.push({ source: si, target: incomeIdx, value: round2(s.amount) });
   }
   const restAmt = incomeSources.slice(SOURCE_TOP).reduce((s, x) => s + x.amount, 0);
   if (restAmt > 0) {
-    const si = add('src:__other', 'Other income', INCOME_COLOR, 0, 'source', { type: 'source', value: '__other' });
+    const si = add('src:__other', 'Other income', incomeColor(), 0, 'source', { type: 'source', value: '__other' });
     links.push({ source: si, target: incomeIdx, value: round2(restAmt) });
   }
 
@@ -1549,7 +1555,7 @@ export async function getCashFlow(range = '12m', detail = false): Promise<CashFl
       const gi = idx.get('grp:' + g)!;
       for (const [c, v] of [...inner.entries()].sort((a, b) => b[1] - a[1])) {
         // Display the emoji + renamed label; keep the canonical name in the click filter.
-        const emoji = cashLabeler.emoji(c) ?? TAX_EMOJI[c] ?? suggestEmoji(c);
+        const emoji = cashLabeler.emoji(c) ?? suggestEmoji(c);
         const ci = add('cat:' + c, `${emoji} ${cashLabeler.label(c)}`, color, 3, 'category', { type: 'category', value: c });
         links.push({ source: gi, target: ci, value: round2(v) });
       }

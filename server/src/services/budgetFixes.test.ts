@@ -219,15 +219,16 @@ describe('removeCategory', () => {
 describe('category routes', () => {
   it('PATCH/DELETE /category/:name use the (already decoded) param — "50% off" does not throw', async () => {
     const created = budget.addCategory('50% off');
-    const enc = encodeURIComponent(created);
-    const patch = await fetch(`${base}/category/${enc}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label: 'Half price' }),
+    const patch = await fetch(`${base}/category/${encodeURIComponent(created)}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label: '25% off' }),
     });
     expect(patch.status).toBe(200);
-    expect(budget.getCategoryLabeler().label(created)).toBe('Half price');
-    const del = await fetch(`${base}/category/${enc}`, { method: 'DELETE' });
-    expect(del.status).toBe(200);
+    // A rename changes the category's real name (references move with it).
+    expect(budget.getActiveCategories()).toContain('25% off');
     expect(budget.getActiveCategories()).not.toContain(created);
+    const del = await fetch(`${base}/category/${encodeURIComponent('25% off')}`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(budget.getActiveCategories()).not.toContain('25% off');
   });
 
   it('POST /categories/restore rejects an empty or malformed body without wiping anything', async () => {

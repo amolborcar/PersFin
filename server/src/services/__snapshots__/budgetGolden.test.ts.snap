@@ -2468,6 +2468,204 @@ exports[`budget pipeline golden outputs > getCategoryGroups and state snapshot 2
       "period": "annual",
     },
   ],
+  "taxonomy": [
+    {
+      "categories": [
+        {
+          "emoji": "💵",
+          "name": "Paychecks",
+        },
+        {
+          "emoji": "💰",
+          "name": "Other Income",
+        },
+        {
+          "emoji": "📈",
+          "name": "Dividends & Capital Gains",
+        },
+      ],
+      "color": "#22b8cf",
+      "name": "Income",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🏠",
+          "hint": "Rent paid to a landlord or property manager",
+          "name": "Rent",
+        },
+        {
+          "emoji": "🛠️",
+          "name": "Home Improvement",
+        },
+        {
+          "emoji": "🧹",
+          "name": "Home Services",
+        },
+        {
+          "emoji": "⚡",
+          "name": "Gas & Electric",
+        },
+        {
+          "emoji": "💧",
+          "name": "Water",
+        },
+        {
+          "emoji": "📶",
+          "name": "Internet & Phone",
+        },
+        {
+          "emoji": "🔁",
+          "name": "Subscriptions",
+        },
+      ],
+      "color": "#6c8fff",
+      "name": "Housing",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🛒",
+          "hint": "Supermarkets, warehouse clubs and food markets",
+          "name": "Groceries",
+        },
+        {
+          "emoji": "🍽️",
+          "name": "Restaurants & Bars",
+        },
+        {
+          "emoji": "☕",
+          "name": "Coffee Shops",
+        },
+      ],
+      "color": "#f472b6",
+      "name": "Food & Dining",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🛍️",
+          "name": "Shopping",
+        },
+        {
+          "emoji": "👕",
+          "name": "Clothing",
+        },
+        {
+          "emoji": "💻",
+          "name": "Electronics",
+        },
+      ],
+      "color": "#f87171",
+      "name": "Shopping",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🧸",
+          "name": "Child Care",
+        },
+        {
+          "emoji": "🎨",
+          "name": "Child Activities",
+        },
+      ],
+      "color": "#fb923c",
+      "name": "Children",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "✈️",
+          "name": "Travel & Vacation",
+        },
+        {
+          "emoji": "🎬",
+          "name": "Entertainment & Recreation",
+        },
+        {
+          "emoji": "💅",
+          "name": "Personal",
+        },
+        {
+          "emoji": "🚗",
+          "name": "Auto Payment",
+        },
+        {
+          "emoji": "⛽",
+          "name": "Gas",
+        },
+        {
+          "emoji": "🅿️",
+          "name": "Parking & Tolls",
+        },
+        {
+          "emoji": "🚕",
+          "name": "Taxi & Ride Shares",
+        },
+        {
+          "emoji": "🏥",
+          "name": "Medical",
+        },
+        {
+          "emoji": "🏋️",
+          "name": "Fitness",
+        },
+      ],
+      "color": "#38bdf8",
+      "name": "Travel & Lifestyle",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🏛️",
+          "name": "Taxes",
+        },
+        {
+          "emoji": "🛡️",
+          "name": "Insurance",
+        },
+        {
+          "emoji": "🧾",
+          "name": "Financial Fees",
+        },
+      ],
+      "color": "#2dd4bf",
+      "name": "Financial",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🎗️",
+          "name": "Charity",
+        },
+        {
+          "emoji": "🎁",
+          "name": "Gifts",
+        },
+      ],
+      "color": "#c084fc",
+      "name": "Gifts & Donations",
+    },
+    {
+      "categories": [
+        {
+          "emoji": "🔄",
+          "name": "Transfers",
+        },
+        {
+          "emoji": "💳",
+          "name": "Credit Card Payment",
+        },
+        {
+          "emoji": "🏷️",
+          "name": "Miscellaneous",
+        },
+      ],
+      "color": "#94a3b8",
+      "name": "Other",
+    },
+  ],
 }
 `;
 

@@ -1,141 +1,182 @@
 import { getDb } from '../db/schema.js';
 import {
-  TAXONOMY, CATEGORIES, suggestEmoji,
+  DEFAULT_TAXONOMY, DEFAULT_CATEGORIES, SYSTEM_CATEGORIES, CUSTOM_GROUP, FALLBACK_GROUP_COLOR,
+  getTaxonomy, taxonomyGroupOf, taxonomyGroupColor, taxonomyEmoji, suggestEmoji, normalizeImportedCategory, resolveAlias,
   type CatDef, type CatGroup,
 } from './taxonomy.js';
+import {
+  saveCategoryFile, renameCategoryReferences, parseCategoryFile, serializeCategoryFile,
+} from './categoryFile.js';
 
-// Category management: the active category list (with display renames, emoji
-// and group overrides), the labeler applied at output boundaries, and the
-// snapshot/undo/reset operations behind the manage-categories UI. Extracted
-// from budget.ts; budget re-exports everything here so consumers are unchanged.
+// Category management: the active category list, the labeler applied at output
+// boundaries, and the operations behind the manage-categories UI. The personal
+// category file (services/categoryFile.ts) is the source of truth: every edit
+// here rewrites the file and re-applies it, and budget_categories is its cache.
+// budget re-exports everything here so consumers are unchanged.
 
-export const CATEGORY_GROUP: Record<string, string> = Object.fromEntries(TAXONOMY.flatMap(g => g.categories.map(c => [c.name, g.name])));
-export const GROUP_COLOR: Record<string, string> = Object.fromEntries(TAXONOMY.map(g => [g.name, g.color]));
-export const TAX_EMOJI: Record<string, string> = Object.fromEntries(TAXONOMY.flatMap(g => g.categories.map(c => [c.name, c.emoji])));
-// All group names in taxonomy order, plus a trailing "Custom" bucket for
-// user-added categories. Drives both group ordering and the reclassify dropdown.
-const GROUP_ORDER: string[] = [...TAXONOMY.map(g => g.name), 'Custom'];
-export const groupColorOf = (g: string): string => GROUP_COLOR[g] ?? '#94a3b8';
-// A category's default group: its taxonomy group, or "Custom" for user-added ones.
-export const defaultGroupOf = (name: string): string => CATEGORY_GROUP[name] ?? 'Custom';
+export const groupColorOf = (g: string): string => taxonomyGroupColor(g);
+// A category's group in the file, or "Custom" for one the file doesn't list.
+export const defaultGroupOf = (name: string): string => taxonomyGroupOf()[name] ?? CUSTOM_GROUP;
 
-// Effective group for every active category: an explicit override (grp column),
-// else the taxonomy/Custom default. Drives the manage UI and the cash-flow Sankey.
+// Group of every active category. Drives the manage UI and the cash-flow Sankey.
 export function getCategoryGroupMap(): Record<string, string> {
-  const rows = getDb().prepare('SELECT name, grp FROM budget_categories').all() as { name: string; grp: string | null }[];
-  const m: Record<string, string> = {};
-  for (const r of rows) m[r.name] = (r.grp && r.grp.trim()) ? r.grp.trim() : defaultGroupOf(r.name);
-  return m;
+  const groupOf = taxonomyGroupOf();
+  return Object.fromEntries(getActiveCategories().map(c => [c, groupOf[c] ?? CUSTOM_GROUP]));
 }
 
-// Picker taxonomy with display overrides applied + a trailing "Custom" group for
-// user-added categories. Each category also carries `canonical` (its stable id)
-// so the manage UI can target renames precisely.
+// Picker taxonomy. Each category also carries `canonical` (its stable id, the
+// same as its name) and `custom` (not one of the built-in defaults).
 export function getCategoryGroups(): (Omit<CatGroup, 'categories'> & { categories: (CatDef & { canonical: string; custom?: boolean })[] })[] {
-  const lab = getCategoryLabeler();
-  const taxNames = new Set(CATEGORIES);
+  const defaults = new Set(DEFAULT_CATEGORIES);
   const groupOf = getCategoryGroupMap();
-  // Build from the ACTIVE categories so removals stick and reclassifications are
-  // reflected — not from the static taxonomy. Categories sort alphabetically
-  // within their group; groups follow taxonomy order (custom groups last).
+  const order = getGroupNames();
+  // Build from the ACTIVE categories. Categories sort alphabetically within their
+  // group; groups follow the file's order.
   const byGroup = new Map<string, (CatDef & { canonical: string; custom?: boolean })[]>();
   for (const c of getActiveCategories()) {
-    const g = groupOf[c] ?? 'Custom';
+    const g = groupOf[c] ?? CUSTOM_GROUP;
     const arr = byGroup.get(g) ?? [];
-    arr.push({ name: lab.label(c), emoji: lab.emoji(c) ?? TAX_EMOJI[c] ?? suggestEmoji(c), canonical: c, custom: !taxNames.has(c) });
+    arr.push({ name: c, emoji: taxonomyEmoji(c) ?? suggestEmoji(c), canonical: c, custom: !defaults.has(c) });
     byGroup.set(g, arr);
   }
   for (const arr of byGroup.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
   const names = [...byGroup.keys()].sort((a, b) => {
-    const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
+    const ia = order.indexOf(a), ib = order.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
   });
   return names.map(g => ({ name: g, color: groupColorOf(g), categories: byGroup.get(g)! }));
 }
 
-// The full ordered list of group names, for the manage UI's reclassify dropdown
-// (so a category can be moved even into a group that's currently empty).
-export function getGroupNames(): string[] { return [...GROUP_ORDER]; }
+// The ordered group names for the manage UI's reclassify dropdown (so a category
+// can be moved even into a group that's currently empty), plus "Custom".
+export function getGroupNames(): string[] {
+  const names = getTaxonomy().map(g => g.name);
+  return names.includes(CUSTOM_GROUP) ? names : [...names, CUSTOM_GROUP];
+}
 
+// System categories can't be removed or renamed (see taxonomy.ts).
+const PROTECTED = SYSTEM_CATEGORIES;
 
-const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Miscellaneous']); // can't be removed
-
-// Display overrides (rename + emoji) keyed by canonical category name. Applied at
-// output boundaries; inputs are canonicalised back before touching stored data.
+// Names are the ids now (in-app renames move every reference), so labels are the
+// identity; `canon` also maps an alias (e.g. a built-in name the category was
+// renamed from) to the current name. Kept as an interface so output boundaries
+// stay unchanged.
 export interface CategoryLabeler { label: (c: string) => string; canon: (l: string) => string; emoji: (c: string) => string | undefined }
 export function getCategoryLabeler(): CategoryLabeler {
-  const rows = getDb().prepare('SELECT name, label, emoji FROM budget_categories').all() as { name: string; label: string | null; emoji: string | null }[];
-  const toLabel = new Map<string, string>(), toCanon = new Map<string, string>(), emojiMap = new Map<string, string>();
-  for (const r of rows) {
-    const lbl = r.label && r.label.trim() ? r.label.trim() : r.name;
-    if (lbl !== r.name) { toLabel.set(r.name, lbl); toCanon.set(lbl, r.name); }
-    if (r.emoji) emojiMap.set(r.name, r.emoji);
-  }
-  return {
-    label: c => toLabel.get(c) ?? c,
-    canon: l => toCanon.get(l) ?? l,
-    emoji: c => emojiMap.get(c),
-  };
+  const names = new Set(getTaxonomy().flatMap(g => g.categories.map(c => c.name)));
+  return { label: c => c, canon: l => (names.has(l) ? l : resolveAlias(l) ?? l), emoji: c => taxonomyEmoji(c) };
 }
 
 export function getActiveCategories(): string[] {
   return (getDb().prepare('SELECT name FROM budget_categories ORDER BY sort, name').all() as { name: string }[]).map(r => r.name);
 }
 
-// Add a new (custom) category, auto-picking an emoji from its name. Returns the
-// created category name (or the existing canonical if the name collides).
+// --- editing the file ----------------------------------------------------------
+
+const clone = (t: CatGroup[]): CatGroup[] => t.map(g => ({ ...g, categories: g.categories.map(c => ({ ...c })) }));
+const findCat = (t: CatGroup[], name: string) => {
+  for (const g of t) { const i = g.categories.findIndex(c => c.name === name); if (i >= 0) return { g, i }; }
+  return null;
+};
+const findCaseless = (t: CatGroup[], name: string) =>
+  t.flatMap(g => g.categories).find(c => c.name.toLowerCase() === name.toLowerCase())?.name;
+// The category (other than `except`) that has `name` as an alias, if any.
+const aliasOwner = (t: CatGroup[], name: string, except?: string) =>
+  t.flatMap(g => g.categories).find(c => c.name !== except && c.aliases?.some(a => a.toLowerCase() === name.toLowerCase()))?.name;
+function groupFor(t: CatGroup[], name: string): CatGroup {
+  let g = t.find(x => x.name === name);
+  if (!g) {
+    g = { name, color: DEFAULT_TAXONOMY.find(x => x.name === name)?.color ?? FALLBACK_GROUP_COLOR, categories: [] };
+    t.push(g);
+  }
+  return g;
+}
+function edit(fn: (t: CatGroup[]) => void): void {
+  const t = clone(getTaxonomy());
+  fn(t);
+  saveCategoryFile(getDb(), t);
+}
+
+// Add a new (custom) category to the "Custom" group, auto-picking an emoji from
+// its name. Returns the created name, or the existing one if it collides.
 export function addCategory(name: string, emoji?: string): string {
   const clean = name.trim().slice(0, 30);
   if (!clean) return '';
-  const db = getDb();
-  // If the name matches an existing canonical or its label, reuse that one.
-  const lab = getCategoryLabeler();
-  const canon = lab.canon(clean);
-  if (getActiveCategories().includes(canon)) return canon;
-  const max = (db.prepare('SELECT COALESCE(MAX(sort),0) AS m FROM budget_categories').get() as { m: number }).m;
-  db.prepare('INSERT OR IGNORE INTO budget_categories (name, sort, emoji) VALUES (?, ?, ?)').run(clean, max + 1, emoji || suggestEmoji(clean));
+  const existing = findCaseless(getTaxonomy(), clean) ?? aliasOwner(getTaxonomy(), clean);
+  if (existing) return existing;
+  edit(t => { groupFor(t, CUSTOM_GROUP).categories.push({ name: clean, emoji: emoji?.trim() || suggestEmoji(clean) }); });
   return clean;
 }
 
-// Rename (display label) and/or re-emoji a category. `name` is the canonical id.
+// Categories named in an imported CSV that aren't ours yet (after alias
+// normalisation, case-insensitive) are added to "Custom", so honored imports land
+// in their real bucket instead of Miscellaneous. Idempotent.
+export function addImportedCategories(rawCategories: string[]): void {
+  const t = clone(getTaxonomy());
+  let changed = false;
+  for (const raw of rawCategories) {
+    const name = normalizeImportedCategory(raw).slice(0, 30);
+    if (!name || findCaseless(t, name) || aliasOwner(t, name)) continue;
+    groupFor(t, CUSTOM_GROUP).categories.push({ name, emoji: suggestEmoji(name) });
+    changed = true;
+  }
+  if (changed) saveCategoryFile(getDb(), t);
+}
+
+// Rename and/or re-emoji a category. A rename moves every reference (rules,
+// target, imported rows) to the new name and keeps the old name as an alias, so
+// automatic categorization that still produces it lands here. System
+// categories keep their names.
 export function renameCategory(name: string, label?: string, emoji?: string) {
   const db = getDb();
-  if (!getActiveCategories().includes(name)) return;
+  if (!findCat(getTaxonomy(), name)) return;
+  let target = name;
   if (label !== undefined) {
     const clean = label.trim().slice(0, 30);
-    // null out the override when the label is empty or equals the canonical name.
-    db.prepare('UPDATE budget_categories SET label = ? WHERE name = ?').run(clean && clean !== name ? clean : null, name);
+    const clash = clean ? findCaseless(getTaxonomy(), clean) ?? aliasOwner(getTaxonomy(), clean, name) : undefined;
+    if (clean && clean !== name && !PROTECTED.has(name) && (!clash || clash === name)) {
+      renameCategoryReferences(db, name, clean);
+      target = clean;
+    }
   }
-  if (emoji !== undefined) db.prepare('UPDATE budget_categories SET emoji = ? WHERE name = ?').run(emoji || null, name);
+  edit(t => {
+    const at = findCat(t, name)!;
+    const cat = at.g.categories[at.i];
+    if (target !== name) {
+      const keep = (cat.aliases ?? []).filter(a => a.toLowerCase() !== target.toLowerCase());
+      if (!keep.some(a => a.toLowerCase() === name.toLowerCase())) keep.push(name);
+      cat.aliases = keep;
+    }
+    cat.name = target;
+    if (emoji !== undefined) cat.emoji = emoji.trim() || suggestEmoji(target);
+  });
 }
 
-// Reclassify a category into another group (affects the manage UI, the picker
-// grouping and the cash-flow Sankey). Clears the override when it matches the
-// taxonomy default.
+// Move a category into another group (created at the end if it doesn't exist).
 export function setCategoryGroup(name: string, group: string) {
-  const canon = getCategoryLabeler().canon(name);
-  if (!getActiveCategories().includes(canon)) return;
-  const g = group.trim();
-  const val = g && g !== defaultGroupOf(canon) ? g : null;
-  getDb().prepare('UPDATE budget_categories SET grp = ? WHERE name = ?').run(val, canon);
+  const g = group.trim().slice(0, 40);
+  if (!g || !findCat(getTaxonomy(), name)) return;
+  edit(t => {
+    const at = findCat(t, name)!;
+    const [cat] = at.g.categories.splice(at.i, 1);
+    groupFor(t, g).categories.push(cat);
+  });
 }
 
+// Remove a category. Applying the file deletes its target and rules (its
+// transactions fall back to automatic categorization) and moves imported rows
+// that carried it to Miscellaneous.
 export function removeCategory(name: string) {
-  const canon = getCategoryLabeler().canon(name);
-  if (PROTECTED.has(canon)) return;
-  const db = getDb();
-  db.prepare('DELETE FROM budget_categories WHERE name = ?').run(canon);
-  db.prepare('DELETE FROM budget_targets WHERE category = ?').run(canon);
-  // Every rule pointing at it goes too (merchant, base AND smart): a leftover rule
-  // would resolve to Miscellaneous at read time and override the auto category.
-  db.prepare(`DELETE FROM rules WHERE kind IN ('merchant', 'base', 'smart') AND category = ?`).run(canon);
+  if (PROTECTED.has(name) || !findCat(getTaxonomy(), name)) return;
+  edit(t => { const at = findCat(t, name)!; at.g.categories.splice(at.i, 1); });
 }
 
 // --- Category management: snapshot / undo / reset ---------------------------
-// A full snapshot of everything the manage-categories UI can touch (the category
-// list with its renames/emojis, plus the targets and rules that reference them).
+// A full snapshot of everything the manage-categories UI can touch: the category
+// file's taxonomy, plus the targets and rules that reference categories.
 // Captured when the panel opens so "Undo changes" can restore it losslessly.
 export interface CategoryState {
+  taxonomy?: CatGroup[];
   categories: { name: string; sort: number; label: string | null; emoji: string | null; grp: string | null }[];
   targets: { category: string; monthly_limit: number; period: string }[];
   rules: { merchant: string; category: string }[];
@@ -146,6 +187,7 @@ export interface CategoryState {
 export function getCategoryState(): CategoryState {
   const db = getDb();
   return {
+    taxonomy: clone(getTaxonomy()),
     categories: db.prepare('SELECT name, sort, label, emoji, grp FROM budget_categories ORDER BY sort, name').all() as CategoryState['categories'],
     targets: db.prepare('SELECT category, monthly_limit, period FROM budget_targets').all() as CategoryState['targets'],
     rules: db.prepare(`SELECT merchant, category FROM rules WHERE kind = 'merchant'`).all() as CategoryState['rules'],
@@ -154,17 +196,31 @@ export function getCategoryState(): CategoryState {
   };
 }
 
-// Replace the category list, targets and rules with a previously-captured snapshot.
+// The taxonomy a snapshot describes: its own (validated), or — for a snapshot
+// without one — its category names placed in their current groups.
+function snapshotTaxonomy(s: CategoryState): CatGroup[] {
+  if (Array.isArray(s.taxonomy)) {
+    const parsed = parseCategoryFile(serializeCategoryFile(s.taxonomy));
+    if (parsed.ok) return parsed.taxonomy;
+  }
+  const groupOf = taxonomyGroupOf();
+  const t: CatGroup[] = [];
+  for (const c of [...(s.categories ?? [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))) {
+    if (!c?.name?.trim()) continue;
+    groupFor(t, groupOf[c.name] ?? CUSTOM_GROUP).categories.push({ name: c.name, emoji: taxonomyEmoji(c.name) ?? suggestEmoji(c.name) });
+  }
+  return t;
+}
+
+// Replace the category file, targets and rules with a previously-captured snapshot.
 export function restoreCategoryState(s: CategoryState) {
   const db = getDb();
+  saveCategoryFile(db, snapshotTaxonomy(s));
   db.transaction(() => {
-    db.prepare('DELETE FROM budget_categories').run();
     db.prepare('DELETE FROM budget_targets').run();
     // Sign-flip rules aren't part of the snapshot (they never were) — only the
     // category-bearing kinds are replaced.
     db.prepare(`DELETE FROM rules WHERE kind IN ('merchant', 'base', 'smart')`).run();
-    const ic = db.prepare('INSERT INTO budget_categories (name, sort, label, emoji, grp) VALUES (?, ?, ?, ?, ?)');
-    for (const c of s.categories ?? []) ic.run(c.name, c.sort ?? 0, c.label ?? null, c.emoji ?? null, c.grp ?? null);
     const it = db.prepare('INSERT OR REPLACE INTO budget_targets (category, monthly_limit, period) VALUES (?, ?, ?)');
     for (const t of s.targets ?? []) it.run(t.category, t.monthly_limit, t.period === 'annual' ? 'annual' : 'monthly');
     const ir = db.prepare(`INSERT OR REPLACE INTO rules (kind, merchant, category) VALUES ('merchant', ?, ?)`);
@@ -176,19 +232,9 @@ export function restoreCategoryState(s: CategoryState) {
   })();
 }
 
-// Reset the taxonomy to defaults: the built-in category list with its default
-// order, clearing all renames/emoji overrides and removing custom categories.
+// Reset the category file to the built-in defaults, removing custom categories.
 // Budgets and rules for surviving (default) categories are kept; those that
-// pointed at removed categories are pruned.
+// pointed at removed categories are removed with them.
 export function resetCategoriesToDefault() {
-  const db = getDb();
-  db.transaction(() => {
-    db.prepare('DELETE FROM budget_categories').run();
-    const ins = db.prepare('INSERT INTO budget_categories (name, sort) VALUES (?, ?)');
-    CATEGORIES.forEach((c, i) => ins.run(c, i));
-    db.prepare('DELETE FROM budget_targets WHERE category NOT IN (SELECT name FROM budget_categories)').run();
-    // Sign rules carry no category and survive a taxonomy reset, as before.
-    db.prepare('DELETE FROM rules WHERE category IS NOT NULL AND category NOT IN (SELECT name FROM budget_categories)').run();
-  })();
+  saveCategoryFile(getDb(), clone(DEFAULT_TAXONOMY));
 }
-

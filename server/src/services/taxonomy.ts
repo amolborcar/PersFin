@@ -3,26 +3,48 @@ import type Database from 'better-sqlite3';
 // The category taxonomy and its pure helpers. This module is deliberately
 // dependency-free (no getDb import) so the DB migration runner can use it
 // without creating an import cycle: schema → migrations → taxonomy.
-// budget.ts re-exports everything here, so consumers keep importing from it.
+//
+// The live taxonomy comes from the owner's personal category file
+// (data/categories.json — see services/categoryFile.ts), loaded at startup and
+// whenever the file changes. DEFAULT_TAXONOMY is the built-in starting point:
+// it seeds a new file and backs the one-time DB migrations.
 
 export type Category = string;
-export interface CatDef { name: string; emoji: string }
+// `hint` (optional) tells the AI categorizer what belongs in the category.
+// `aliases` (optional) are other names for it — e.g. the built-in name it was
+// renamed from — so automatic categorization and imports that produce an alias
+// land in this category.
+export interface CatDef { name: string; emoji: string; hint?: string; aliases?: string[] }
 export interface CatGroup { name: string; color: string; categories: CatDef[] }
 
-// Single source of truth for the category taxonomy (Monarch-style: groups →
-// subcategories), shared by the picker, the budget breakdown and the cash-flow
-// Sankey. A curated subset tuned to typical household spending.
-export const TAXONOMY: CatGroup[] = [
+// System categories: the budget logic refers to these by name (income
+// detection, transfers and card payments drop out of spending, Miscellaneous is
+// the catch-all / review queue). They always exist and can't be removed or
+// renamed; the category file loader adds any that are missing.
+export const SYSTEM_INCOME_CATEGORIES = ['Paychecks', 'Other Income', 'Dividends & Capital Gains'];
+export const SYSTEM_OTHER_CATEGORIES = ['Transfers', 'Credit Card Payment', 'Miscellaneous'];
+export const SYSTEM_CATEGORIES = new Set([...SYSTEM_INCOME_CATEGORIES, ...SYSTEM_OTHER_CATEGORIES]);
+// Categories in the group with this name count as income (plus the system ones).
+export const INCOME_GROUP = 'Income';
+// Where system categories go when the file leaves them out, and where new
+// user-added categories go.
+export const OTHER_GROUP = 'Other';
+export const CUSTOM_GROUP = 'Custom';
+export const FALLBACK_GROUP_COLOR = '#94a3b8';
+
+// The built-in taxonomy (Monarch-style: groups → subcategories): a curated
+// subset tuned to typical household spending.
+export const DEFAULT_TAXONOMY: CatGroup[] = [
   { name: 'Income', color: '#22b8cf', categories: [
     { name: 'Paychecks', emoji: '💵' }, { name: 'Other Income', emoji: '💰' }, { name: 'Dividends & Capital Gains', emoji: '📈' },
   ] },
   { name: 'Housing', color: '#6c8fff', categories: [
-    { name: 'Rent', emoji: '🏠' }, { name: 'Home Improvement', emoji: '🛠️' }, { name: 'Home Services', emoji: '🧹' },
+    { name: 'Rent', emoji: '🏠', hint: 'Rent paid to a landlord or property manager' }, { name: 'Home Improvement', emoji: '🛠️' }, { name: 'Home Services', emoji: '🧹' },
     // Bills & Utilities folded into Housing.
     { name: 'Gas & Electric', emoji: '⚡' }, { name: 'Water', emoji: '💧' }, { name: 'Internet & Phone', emoji: '📶' }, { name: 'Subscriptions', emoji: '🔁' },
   ] },
   { name: 'Food & Dining', color: '#f472b6', categories: [
-    { name: 'Groceries', emoji: '🛒' }, { name: 'Restaurants & Bars', emoji: '🍽️' }, { name: 'Coffee Shops', emoji: '☕' },
+    { name: 'Groceries', emoji: '🛒', hint: 'Supermarkets, warehouse clubs and food markets' }, { name: 'Restaurants & Bars', emoji: '🍽️' }, { name: 'Coffee Shops', emoji: '☕' },
   ] },
   { name: 'Shopping', color: '#f87171', categories: [
     { name: 'Shopping', emoji: '🛍️' }, { name: 'Clothing', emoji: '👕' }, { name: 'Electronics', emoji: '💻' },
@@ -48,7 +70,41 @@ export const TAXONOMY: CatGroup[] = [
   ] },
 ];
 
-export const CATEGORIES: string[] = TAXONOMY.flatMap(g => g.categories.map(c => c.name));
+export const DEFAULT_CATEGORIES: string[] = DEFAULT_TAXONOMY.flatMap(g => g.categories.map(c => c.name));
+
+// --- the live taxonomy ------------------------------------------------------
+let current: CatGroup[] = DEFAULT_TAXONOMY;
+
+export function getTaxonomy(): CatGroup[] { return current; }
+export function setTaxonomy(t: CatGroup[]): void { current = t; }
+
+// Every category name in the live taxonomy, in file order.
+export function taxonomyCategories(): string[] {
+  return current.flatMap(g => g.categories.map(c => c.name));
+}
+// category name → its group name.
+export function taxonomyGroupOf(): Record<string, string> {
+  return Object.fromEntries(current.flatMap(g => g.categories.map(c => [c.name, g.name])));
+}
+export function taxonomyGroupColor(group: string): string {
+  return current.find(g => g.name === group)?.color ?? FALLBACK_GROUP_COLOR;
+}
+export function taxonomyEmoji(category: string): string | undefined {
+  for (const g of current) for (const c of g.categories) if (c.name === category) return c.emoji;
+  return undefined;
+}
+// The current category an alias stands for (case-insensitive), if any.
+export function resolveAlias(name: string): string | undefined {
+  const n = name.toLowerCase();
+  for (const g of current) for (const c of g.categories) if (c.aliases?.some(a => a.toLowerCase() === n)) return c.name;
+  return undefined;
+}
+
+// Income categories: the live Income group plus the system income categories.
+export function isIncomeCategory(category: string): boolean {
+  if (SYSTEM_INCOME_CATEGORIES.includes(category)) return true;
+  return !!current.find(g => g.name === INCOME_GROUP)?.categories.some(c => c.name === category);
+}
 
 // Suggest a fitting emoji for a (new) category from its name.
 const EMOJI_HINTS: [RegExp, string][] = [

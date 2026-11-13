@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "name": "Income",
+      "color": "#22b8cf",
+      "categories": [
+        {
+          "name": "Paychecks",
+          "emoji": "💵"
+        },
+        {
+          "name": "Other Income",
+          "emoji": "💰"
+        },
+        {
+          "name": "Dividends & Capital Gains",
+          "emoji": "📈"
+        }
+      ]
+    },
+    {
+      "name": "Housing",
+      "color": "#6c8fff",
+      "categories": [
+        {
+          "name": "Rent",
+          "emoji": "🏠",
+          "hint": "Rent paid to a landlord or property manager"
+        },
+        {
+          "name": "Home Improvement",
+          "emoji": "🛠️"
+        },
+        {
+          "name": "Home Services",
+          "emoji": "🧹"
+        },
+        {
+          "name": "Gas & Electric",
+          "emoji": "⚡"
+        },
+        {
+          "name": "Water",
+          "emoji": "💧"
+        },
+        {
+          "name": "Internet & Phone",
+          "emoji": "📶"
+        },
+        {
+          "name": "Subscriptions",
+          "emoji": "🔁"
+        }
+      ]
+    },
+    {
+      "name": "Food & Dining",
+      "color": "#f472b6",
+      "categories": [
+        {
+          "name": "Groceries",
+          "emoji": "🛒",
+          "hint": "Supermarkets, warehouse clubs and food markets"
+        },
+        {
+          "name": "Restaurants & Bars",
+          "emoji": "🍽️"
+        },
+        {
+          "name": "Coffee Shops",
+          "emoji": "☕"
+        }
+      ]
+    },
+    {
+      "name": "Shopping",
+      "color": "#f87171",
+      "categories": [
+        {
+          "name": "Shopping",
+          "emoji": "🛍️"
+        },
+        {
+          "name": "Clothing",
+          "emoji": "👕"
+        },
+        {
+          "name": "Electronics",
+          "emoji": "💻"
+        }
+      ]
+    },
+    {
+      "name": "Children",
+      "color": "#fb923c",
+      "categories": [
+        {
+          "name": "Child Care",
+          "emoji": "🧸"
+        },
+        {
+          "name": "Child Activities",
+          "emoji": "🎨"
+        }
+      ]
+    },
+    {
+      "name": "Travel & Lifestyle",
+      "color": "#38bdf8",
+      "categories": [
+        {
+          "name": "Travel & Vacation",
+          "emoji": "✈️"
+        },
+        {
+          "name": "Entertainment & Recreation",
+          "emoji": "🎬"
+        },
+        {
+          "name": "Personal",
+          "emoji": "💅"
+        },
+        {
+          "name": "Auto Payment",
+          "emoji": "🚗"
+        },
+        {
+          "name": "Gas",
+          "emoji": "⛽"
+        },
+        {
+          "name": "Parking & Tolls",
+          "emoji": "🅿️"
+        },
+        {
+          "name": "Taxi & Ride Shares",
+          "emoji": "🚕"
+        },
+        {
+          "name": "Medical",
+          "emoji": "🏥"
+        },
+        {
+          "name": "Fitness",
+          "emoji": "🏋️"
+        }
+      ]
+    },
+    {
+      "name": "Financial",
+      "color": "#2dd4bf",
+      "categories": [
+        {
+          "name": "Taxes",
+          "emoji": "🏛️"
+        },
+        {
+          "name": "Insurance",
+          "emoji": "🛡️"
+        },
+        {
+          "name": "Financial Fees",
+          "emoji": "🧾"
+        }
+      ]
+    },
+    {
+      "name": "Gifts & Donations",
+      "color": "#c084fc",
+      "categories": [
+        {
+          "name": "Charity",
+          "emoji": "🎗️"
+        },
+        {
+          "name": "Gifts",
+          "emoji": "🎁"
+        }
+      ]
+    },
+    {
+      "name": "Other",
+      "color": "#94a3b8",
+      "categories": [
+        {
+          "name": "Transfers",
+          "emoji": "🔄"
+        },
+        {
+          "name": "Credit Card Payment",
+          "emoji": "💳"
+        },
+        {
+          "name": "Miscellaneous",
+          "emoji": "🏷️"
+        }
+      ]
+    }
+  ]
+}

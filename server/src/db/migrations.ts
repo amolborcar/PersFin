@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import {
-  CATEGORIES, TAXONOMY_MIGRATION, GROUP_MERGES, ensureImportedCategories,
+  DEFAULT_CATEGORIES as CATEGORIES, TAXONOMY_MIGRATION, GROUP_MERGES, ensureImportedCategories,
 } from '../services/taxonomy.js';
 import { syncFeedTransactions, FEED_WINDOW_DAYS, type RawTxn } from '../services/feedStore.js';
 

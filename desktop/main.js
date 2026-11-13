@@ -340,7 +340,11 @@ ipcMain.handle('kevfin:applyAndRelaunch', async (_e, next) => {
   };
 
   try {
-    if (next.dbDir) updated.dbPath = relocate(cfg.dbPath, next.dbDir, 'kevfin.db');
+    if (next.dbDir) {
+      updated.dbPath = relocate(cfg.dbPath, next.dbDir, 'kevfin.db');
+      // The personal category file lives next to the database; carry it along.
+      relocate(path.join(path.dirname(cfg.dbPath), 'categories.json'), next.dbDir, 'categories.json');
+    }
     if (next.keysDir) updated.keysPath = relocate(cfg.keysPath, next.keysDir, 'kevfin.env');
   } catch (e) {
     return { ok: false, error: e.message };

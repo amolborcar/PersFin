@@ -85,6 +85,40 @@ one-click **Sync now** that pulls fresh balances from every linked institution
 point. A daily midnight net-worth history point is also recorded automatically (set
 `DAILY_SNAPSHOT=false` to turn it off).
 
+## Your category file
+
+Your budget categories live in `categories.json` next to the database
+(`data/categories.json` when running from source; in the desktop app, in the
+storage folder). It is never committed to git. The app creates it on first start,
+and Budget → Manage categories edits it. You can also edit it in any text editor;
+changes apply within a few seconds.
+
+```json
+{
+  "version": 1,
+  "groups": [
+    { "name": "Food & Dining", "color": "#f472b6", "categories": [
+      { "name": "Groceries", "emoji": "🛒", "hint": "Supermarkets and food markets" },
+      "Coffee Shops"
+    ] }
+  ]
+}
+```
+
+- `hint` (optional) tells the AI categorizer what belongs in the category.
+- `aliases` (optional) are other names for the category. A rename in the app adds
+  the old name here.
+- Categories in the group named `Income` count as income.
+- The system categories Paychecks, Other Income, Dividends & Capital Gains,
+  Transfers, Credit Card Payment and Miscellaneous always exist; if the file
+  leaves one out, the app adds it.
+- If you delete a category from the file, its budget target and rules are
+  deleted, and imported transactions that used it move to Miscellaneous. The
+  manage panel shows what changed.
+- A file with an error is not applied; the manage panel shows the error.
+
+See `categories.example.json` for the full default list.
+
 ## How the AI assistant works
 
 The built-in assistant **does not use a paid API key.** It runs your **locally
