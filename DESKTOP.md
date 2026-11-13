@@ -48,6 +48,38 @@ macOS app on a macOS runner and uploads the `.dmg` as an artifact:
 
 Download the `KevFin-macos` artifact from the run.
 
+## Keep running in the background (always on)
+
+In the app: **Setup (⚙) → Sync → Keep running in the background**. This installs
+three launchd agents in `~/Library/LaunchAgents/` (no admin password needed):
+
+| Agent | What it does |
+|---|---|
+| `com.kevfin.server` | Runs the KevFin server at login and restarts it if it stops. Listens on `127.0.0.1` and your Tailscale address only. |
+| `com.kevfin.daily-sync` | 06:00 every day: Plaid sync, then history repair. |
+| `com.kevfin.snapshot` | 00:00 every day: net-worth snapshot. |
+
+If the Mac is asleep at a scheduled time, launchd runs the job once when it
+wakes; the server runs each job at most once per day. Keep the Mac awake:
+System Settings → Energy → "Prevent automatic sleeping when the display is off".
+Setup shows a warning when system sleep is on. KevFin never changes power settings.
+
+With the service on, closing the app window leaves the server running, and the
+app opens a window to it. Turning it off removes the agents and the app runs its
+own server again. Moving the storage location rewrites the agents.
+
+Check it from Terminal:
+
+```bash
+launchctl print gui/$(id -u)/com.kevfin.server | head -20
+```
+
+```bash
+curl -s -X POST http://127.0.0.1:3001/api/jobs/snapshot
+```
+
+Logs: `~/Library/Logs/KevFin/` (`server.log`, `server.err.log`, `daily-sync.log`, `snapshot.log`).
+
 ## Choosing where data lives
 
 In the app: **Setup (⚙) → Storage location → Change folder…**. Pick any folder —

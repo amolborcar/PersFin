@@ -1,17 +1,22 @@
 // KevFin desktop (Electron main process).
 //
-// Wraps the existing Express server + built client: it spawns the server as a
-// child process with the user's chosen storage paths, waits for it to come up,
-// then opens a native window pointed at it. A small config file in userData
-// remembers where the database and keys file live so they can be relocated to a
-// cloud-synced or NAS folder (see the Storage panel in the app's Setup).
+// Wraps the existing Express server + built client. Two ways to run the server:
+//  - Background service (Setup → "Keep running in the background"): launchd runs
+//    the server at login and keeps it running when this app is closed, and runs
+//    the scheduled jobs (see launchd.js). The app then only opens a window to it.
+//  - Otherwise the app spawns the server as a child process with the user's
+//    chosen storage paths and stops it when the last window closes.
+// A small config file in userData remembers where the database and keys file
+// live so they can be relocated to a cloud-synced or NAS folder.
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const { spawn, fork } = require('child_process');
+const { spawn, fork, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const net = require('net');
 const http = require('http');
+const launchd = require('./launchd.js');
 
 const isPackaged = app.isPackaged;
 
@@ -59,9 +64,10 @@ function getFreePort(preferred) {
   return new Promise((resolve) => {
     const srv = net.createServer();
     srv.once('error', () => resolve(getFreePort(0)));
-    // Bind the same way the server does (all interfaces, no explicit host) so a
-    // port already taken on :: / 0.0.0.0 is correctly detected as busy.
-    srv.listen(preferred || 0, () => {
+    // Bind 127.0.0.1 like the server does (KEVFIN_LISTEN=local+tailscale): a
+    // wildcard probe could succeed beside a server bound to 127.0.0.1 only and
+    // report a busy port as free.
+    srv.listen(preferred || 0, '127.0.0.1', () => {
       const p = srv.address().port;
       srv.close(() => resolve(p));
     });
@@ -86,27 +92,34 @@ function waitForServer(port, timeoutMs = 30000) {
   });
 }
 
+// Resolve once the preferred port can be bound (e.g. after a server stops).
+async function waitPortFree(port, timeoutMs) {
+  const start = Date.now();
+  while ((await getFreePort(port)) !== port) {
+    if (Date.now() - start > timeoutMs) throw new Error(`Port ${port} is in use by another program.`);
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
+
 let serverChild = null;
 let mainWindow = null;
 let currentPort = 0;
 
-async function startServer() {
-  const cfg = loadConfig();
-  currentPort = await getFreePort(cfg.port || 3001);
-
+function ensureDataDirs(cfg) {
   // Make sure the chosen folders exist before the server opens files there.
   for (const p of [cfg.dbPath, cfg.keysPath]) {
     try { fs.mkdirSync(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
   }
+}
 
-  const claudeBin = bundledClaudeBin();
+async function startServer() {
+  const cfg = loadConfig();
+  currentPort = await getFreePort(cfg.port || 3001);
+  ensureDataDirs(cfg);
+
   const env = {
     ...process.env,
-    NODE_ENV: 'production',
-    PORT: String(currentPort),
-    DB_PATH: cfg.dbPath,
-    KEVFIN_ENV_PATH: cfg.keysPath,
-    ...(claudeBin ? { CLAUDE_BIN: claudeBin } : {}),
+    ...launchd.serverEnv({ port: currentPort, dbPath: cfg.dbPath, keysPath: cfg.keysPath, claudeBin: bundledClaudeBin() }),
   };
 
   // Dev: run the server with the system Node so the existing better-sqlite3
@@ -144,25 +157,152 @@ function createWindow(port) {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// Stops only the server this app spawned; a background (launchd) server keeps
+// running when the app closes.
 function stopServer() {
   if (serverChild) { try { serverChild.kill(); } catch { /* ignore */ } serverChild = null; }
 }
 
+// --- background service (launchd) ----------------------------------------
+const AGENT_DIR = path.join(os.homedir(), 'Library', 'LaunchAgents');
+const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'KevFin');
+const agentFile = (label) => path.join(AGENT_DIR, `${label}.plist`);
+const guiDomain = () => `gui/${process.getuid()}`;
+
+function launchctl(args) {
+  return execFileSync('/bin/launchctl', args, { stdio: 'pipe' }).toString();
+}
+function isLoaded(label) {
+  try { launchctl(['print', `${guiDomain()}/${label}`]); return true; } catch { return false; }
+}
+function sleepMs(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+// A just-booted-out agent can take a moment to unload; retry the bootstrap.
+function bootstrap(label) {
+  for (let attempt = 1; ; attempt++) {
+    try { launchctl(['bootstrap', guiDomain(), agentFile(label)]); return; }
+    catch (e) { if (attempt >= 10) throw e; sleepMs(500); }
+  }
+}
+function bootout(label) {
+  if (!isLoaded(label)) return;
+  try { launchctl(['bootout', `${guiDomain()}/${label}`]); }
+  catch (e) { console.error(`[desktop] bootout ${label} failed:`, e.message); }
+}
+
+function backgroundEnabled() {
+  return process.platform === 'darwin' && fs.existsSync(agentFile(launchd.LABELS.server));
+}
+
+// Write (or rewrite) every agent for the current storage paths and (re)load it.
+function installBackground(cfg) {
+  fs.mkdirSync(AGENT_DIR, { recursive: true });
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  ensureDataDirs(cfg);
+  const agents = launchd.buildAgents({
+    packaged: isPackaged, execPath: process.execPath, entry: serverEntry(),
+    port: cfg.port || 3001, dbPath: cfg.dbPath, keysPath: cfg.keysPath,
+    claudeBin: bundledClaudeBin(), logDir: LOG_DIR,
+  });
+  for (const a of agents) {
+    bootout(a.label);
+    fs.writeFileSync(agentFile(a.label), a.xml);
+    bootstrap(a.label);
+  }
+}
+
+function uninstallBackground() {
+  for (const label of launchd.ALL_LABELS) {
+    bootout(label);
+    try { fs.rmSync(agentFile(label), { force: true }); } catch { /* ignore */ }
+  }
+}
+
+// Agents load at login; after a manual `launchctl bootout` they may not be.
+function ensureBackgroundLoaded() {
+  for (const label of launchd.ALL_LABELS) {
+    if (fs.existsSync(agentFile(label)) && !isLoaded(label)) bootstrap(label);
+  }
+}
+
+// Use the background server when it is enabled and answering; otherwise run
+// (or keep) the app's own child server.
+async function ensureServer() {
+  const cfg = loadConfig();
+  if (backgroundEnabled()) {
+    try {
+      ensureBackgroundLoaded();
+      await waitForServer(cfg.port || 3001, 20000);
+      currentPort = cfg.port || 3001;
+      return currentPort;
+    } catch (e) {
+      console.error('[desktop] background server not reachable — starting a local one:', e.message);
+    }
+  }
+  if (serverChild) return currentPort;
+  return startServer();
+}
+
+function reloadWindow() {
+  if (mainWindow) mainWindow.loadURL(`http://127.0.0.1:${currentPort}`);
+}
+
 app.whenReady().then(async () => {
   try {
-    const port = await startServer();
+    const port = await ensureServer();
     createWindow(port);
   } catch (e) {
     dialog.showErrorBox('KevFin failed to start', String((e && e.stack) || e));
     app.quit();
   }
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && currentPort) createWindow(currentPort);
+    if (BrowserWindow.getAllWindows().length > 0) return;
+    // The child server stops with the last window; start it again if needed.
+    ensureServer().then(createWindow).catch(e => dialog.showErrorBox('KevFin failed to start', String(e)));
   });
 });
 
 app.on('window-all-closed', () => { stopServer(); });
 app.on('before-quit', stopServer);
+
+// --- IPC: background service (used by Setup → Sync) -------------------------
+ipcMain.handle('kevfin:getBackground', () => ({
+  supported: process.platform === 'darwin',
+  enabled: backgroundEnabled(),
+  logDir: LOG_DIR,
+}));
+
+// Switch between the background (launchd) server and the app's own child
+// server. The window reloads on the server that is now running.
+ipcMain.handle('kevfin:setBackground', async (_e, enabled) => {
+  if (process.platform !== 'darwin') return { ok: false, error: 'Only available on macOS.' };
+  const cfg = loadConfig();
+  const port = cfg.port || 3001;
+  try {
+    if (enabled) {
+      stopServer();
+      await waitPortFree(port, 10000);
+      installBackground(cfg);
+      try {
+        await waitForServer(port, 30000);
+      } catch {
+        uninstallBackground();
+        await startServer();
+        setTimeout(reloadWindow, 300);
+        return { ok: false, error: `The background server did not start. See ${path.join(LOG_DIR, 'server.err.log')}.` };
+      }
+      currentPort = port;
+    } else {
+      uninstallBackground();
+      await waitPortFree(port, 10000).catch(() => { /* startServer picks another port */ });
+      await startServer();
+    }
+    // Reply first, then reload the page onto the server that is now running.
+    setTimeout(reloadWindow, 300);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
 
 // --- IPC: storage location (used by the Setup → Storage panel) ------------
 ipcMain.handle('kevfin:getPaths', () => {
@@ -207,6 +347,11 @@ ipcMain.handle('kevfin:applyAndRelaunch', async (_e, next) => {
   }
 
   saveConfig(updated);
+  // A background server still points at the old paths; rewrite and restart it.
+  if (backgroundEnabled()) {
+    try { installBackground(updated); }
+    catch (e) { return { ok: false, error: `Saved, but the background service could not be updated: ${e.message}` }; }
+  }
   app.relaunch();
   app.exit(0);
   return { ok: true };

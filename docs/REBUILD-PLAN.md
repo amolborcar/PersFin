@@ -15,7 +15,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | 1 SimpleFIN → Plaid | Done. Build passes; tests pass (server 388, client 153). |
 | 2 Remove real estate | Done, including the Mortgage category (migration 9). Build passes; tests pass (server 349, client 143). |
 | 3 macOS only | Done. Build passes; tests pass (server 349, client 143). The `.dmg` build was not run (it needs a macOS runner or the Mac mini). |
-| 3b–9 | Not started |
+| 3b launchd | Done in code; not yet tested on the Mac mini. Build passes; tests pass (server 363, client 143, desktop 6). Test steps: `DESKTOP.md` → "Keep running in the background". |
+| 4–9 | Not started |
 
 Update this table at the end of each phase.
 
@@ -173,6 +174,20 @@ Update this table at the end of each phase.
 7. Tests: plist generation (paths, environment, schedule) and endpoint
    idempotency.
 
+Implementation (done):
+- `desktop/launchd.js` builds the agents (pure, tested with `node --test`);
+  `desktop/main.js` installs/removes them with `launchctl bootstrap`/`bootout`,
+  opens a window to the background server when it answers, and otherwise runs
+  its own child server. Moving the storage location rewrites the agents.
+- `server/src/services/jobs.ts` + `POST /api/jobs/:name` (`daily-sync`,
+  `snapshot`): idempotent per local day; `?force=1` reruns. node-cron calls the
+  same jobs unless `KEVFIN_SCHEDULER=launchd`.
+- `KEVFIN_LISTEN=local+tailscale` (`server/src/util/listen.ts`): binds
+  127.0.0.1, ::1 and Tailscale addresses (100.64.0.0/10, fd7a:115c:a1e0::/48),
+  re-checked every 60 s. Both the launchd server and the app's child server use it.
+- `GET /api/meta/power` reads `pmset -g`; Setup shows a warning when system
+  sleep is on.
+
 ## Phase 4: Personal category file
 
 1. Store the file at `data/categories.json` (`data/` is git-ignored). Add
@@ -246,7 +261,10 @@ Update this table at the end of each phase.
    config uses `upstream-base-url: https://ntfy.sh` for iOS. "Send test push"
    button.
 3. **Privacy level** per channel: `full`, `totals only`, `notice only`.
-4. **Run endpoint** `POST /api/report/weekly/run`: build, store, and send once
+4. **Run endpoint**: add a `weekly-report` job to `server/src/services/jobs.ts`
+   (`JOB_NAMES`, keyed per week instead of per day) so it runs through
+   `POST /api/jobs/weekly-report`, and add its agent (Sunday 19:00,
+   `Weekday: 0`) to `JOBS` in `desktop/launchd.js`. Build, store, and send once
    per week key. On server start, send the last finished week if it was not
    sent.
 5. Update `CLAUDE.md` hard constraints.
