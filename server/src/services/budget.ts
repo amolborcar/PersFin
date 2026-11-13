@@ -1469,7 +1469,7 @@ function creditCardIsTracked(txns: { account: string }[]): boolean {
 // connected today typically has only ~90 days of history, so older months must
 // still count their card payments as spending — the purchases they funded
 // aren't in the ledger for those months.
-function cardTrackedMonths(txns: { account: string; date: string }[]): Set<string> {
+export function cardTrackedMonths(txns: { account: string; date: string }[]): Set<string> {
   const cardNames = cardAccountNames();
   const out = new Set<string>();
   if (cardNames.size === 0) return out;

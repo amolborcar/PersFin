@@ -18,7 +18,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | 3b launchd | Done in code; not yet tested on the Mac mini. Build passes; tests pass (server 363, client 143, desktop 6). Test steps: `DESKTOP.md` → "Keep running in the background". |
 | 4 Category file | Done. Build passes; tests pass (server 378, client 143, desktop 6). |
 | 5 AI categorization | Done. Build passes; tests pass (server 393, client 143, desktop 6). Not yet run against the real Claude Code. |
-| 6–9 | Not started |
+| 6 Weekly report content | Done. Build passes; tests pass (server 411, client 143, desktop 6). |
+| 7–9 | Not started |
 
 Update this table at the end of each phase.
 
@@ -293,6 +294,29 @@ Implementation (done) — differences from the steps above:
    app.
 5. Tests: window boundaries (DST, year end), figures against golden demo data.
 
+Implementation (done):
+- `util/weekWindow.ts`: Monday–Sunday weeks in local time, by calendar
+  arithmetic (tested across DST and the year end). The report covers the
+  current week on a Sunday, else the last finished week; key = its Monday.
+- `services/weeklyReport.ts`: spending uses the budget's rules (income and
+  internal moves excluded, refunds net per category, clamped at $0).
+  - Totals vs last week and the 8 prior weeks' average.
+  - Budget pace: month-to-date vs target. Expected month-end = spent so far +
+    what the category usually costs in the rest of a month (average of the 3
+    prior complete months), so a bill paid early doesn't read as "at risk".
+  - Weekly comparisons and the biggest changes cover only "regular"
+    categories (spent in >= 3 of the 8 prior weeks, and not the category of a
+    fixed recurring bill).
+  - Recurring charges this week: new (first seen within ~10 weeks), price
+    change (> 5% and >= $1 vs the previous charge).
+  - Uncategorized count with a link to `KEVFIN_PUBLIC_URL`/budget.
+  - Optional AI summary (off by default), from aggregated figures only.
+- `util/weeklyRender.ts`: email-safe HTML (tables, inline styles, no scripts,
+  SVG or images) and a 1–3 line text version.
+- Table `weekly_reports` (migration 11) with `email_sent_at` / `push_sent_at`
+  for Phase 7. Routes under `/api/report/weekly`. Setup → Weekly reports builds
+  this week's report and lists past ones.
+
 ## Phase 7: Delivery
 
 1. **Email:** add `nodemailer`. Keys `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
@@ -302,7 +326,9 @@ Implementation (done) — differences from the steps above:
    config uses `upstream-base-url: https://ntfy.sh` for iOS. "Send test push"
    button.
 3. **Privacy level** per channel: `full`, `totals only`, `notice only`.
-4. **Run endpoint**: add a `weekly-report` job to `server/src/services/jobs.ts`
+4. **Run endpoint**: `generateWeeklyReport()` (Phase 6) builds and stores the
+   report; set `KEVFIN_PUBLIC_URL` to the Tailscale URL so the review link
+   works from the phone. Add a `weekly-report` job to `server/src/services/jobs.ts`
    (`JOB_NAMES`, keyed per week instead of per day) so it runs through
    `POST /api/jobs/weekly-report`, and add its agent (Sunday 19:00,
    `Weekday: 0`) to `JOBS` in `desktop/launchd.js`. Build, store, and send once

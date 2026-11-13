@@ -375,6 +375,65 @@ function SleepRow() {
   );
 }
 
+// ---- Weekly reports -------------------------------------------------------------
+// The weekly spending report (Monday–Sunday): build this week's now, open past
+// ones, and the optional AI summary. Sending it by email/push is set up apart.
+interface WeeklyList { reports: { key: string; start: string; end: string; total: number; generatedAt: string }[]; currentWeek: string; aiSummary: boolean }
+function WeeklyReportsRow() {
+  const [open, setOpen] = useState(false);
+  const { data, refetch } = useApi<WeeklyList>('/api/report/weekly');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+
+  async function build() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch('/api/report/weekly/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json() as { key: string };
+      refetch();
+      window.open(`/api/report/weekly/${d.key}`, '_blank', 'noopener');
+      setMsg({ kind: 'ok', text: 'Report built.' });
+    } catch (e) {
+      setMsg({ kind: 'error', text: e instanceof Error ? e.message : 'Could not build the report.' });
+    } finally { setBusy(false); }
+  }
+  async function setAi(on: boolean) {
+    await fetch('/api/report/weekly/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ aiSummary: on }) });
+    refetch();
+  }
+
+  const latest = data?.reports[0];
+  return (
+    <Row icon={<IconFile />} title="Weekly reports" expanded={open} onClick={() => setOpen(o => !o)}
+      subtitle={latest ? `Latest: week of ${fmtDate(latest.start)} · ${money(latest.total)} spent` : 'Spending by week, with budget pace and changes'}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <button className="btn-primary" disabled={busy} onClick={build} style={{ fontSize: 12, padding: '6px 12px' }}>
+          {busy ? 'Building…' : 'Build this week\u2019s report'}
+        </button>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}
+          title="Adds a few sentences written by your local Claude Code. Sends only the week's totals by category — no merchants or transactions.">
+          <input type="checkbox" checked={!!data?.aiSummary} onChange={e => setAi(e.target.checked)} style={{ width: 'auto' }} /> AI summary
+        </label>
+      </div>
+      {msg && <p role="status" style={{ ...msgStyle, color: msg.kind === 'error' ? 'var(--red)' : 'var(--green)' }}>{msg.text}</p>}
+      {!!data?.reports.length && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '10px 0 0', fontSize: 12.5 }}>
+          {data.reports.slice(0, 8).map(r => (
+            <li key={r.key} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+              <a href={`/api/report/weekly/${r.key}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
+                Week of {fmtDate(r.start)}
+              </a>
+              <span style={{ color: 'var(--muted)' }}>{money(r.total)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Row>
+  );
+}
+
 // ---- SEC contact email -------------------------------------------------------
 // Fund holdings (country / stock look-through) come from SEC EDGAR, which rejects
 // anonymous scripts. KevFin declares this address (and only here) in the
@@ -761,6 +820,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
         <Row icon={<IconUpload />} title="Restore from backup" disabled={!!busy} onClick={() => fileRef.current?.click()}
           subtitle={busy === 'restore' ? 'Restoring…' : 'Replace current data with a saved backup file'}
           right={busy === 'restore' ? <Spinner /> : undefined} />
+        <WeeklyReportsRow />
         <Row icon={<IconFile />} title="Quarterly report" href="/api/report/quarterly"
           subtitle={`${report?.quarterLabel ?? 'Latest completed quarter'} · ${report?.generatedAt
             ? `generated ${fmtDate(new Date(report.generatedAt))}` : 'not generated yet'}`}

@@ -490,6 +490,26 @@ function aiSuggestionsTable(db: Db) {
   `);
 }
 
+// Weekly spending reports (services/weeklyReport.ts), one row per week (keyed
+// by its Monday). The *_sent_at columns record delivery, so each week is sent
+// at most once per channel.
+function weeklyReportsTable(db: Db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS weekly_reports (
+      week_key      TEXT PRIMARY KEY,  -- Monday, YYYY-MM-DD
+      week_start    TEXT NOT NULL,
+      week_end      TEXT NOT NULL,     -- Sunday
+      total         REAL NOT NULL,     -- spent that week
+      generated_at  TEXT NOT NULL,     -- ISO instant
+      model         TEXT NOT NULL,     -- the computed figures (JSON)
+      html          TEXT NOT NULL,     -- email-ready HTML
+      text          TEXT NOT NULL,     -- short plain text
+      email_sent_at TEXT,
+      push_sent_at  TEXT
+    );
+  `);
+}
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'baseline', up: baseline },
   { version: 2, name: 'feed-transactions-table', up: feedTransactionsTable },
@@ -501,6 +521,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 8, name: 'remove-real-estate', up: removeRealEstate },
   { version: 9, name: 'remove-mortgage-category', up: removeMortgageCategory },
   { version: 10, name: 'ai-suggestions-table', up: aiSuggestionsTable },
+  { version: 11, name: 'weekly-reports-table', up: weeklyReportsTable },
 ];
 
 // Apply every migration newer than the database's user_version, each in its own

@@ -1,6 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { getQuarterlyReport, getStoredReport } from '../services/reportCache.js';
 import { getReportWindow } from '../util/reportWindow.js';
+import {
+  generateWeeklyReport, listWeeklyReports, getStoredWeeklyReport, getWeeklyAiSummary, setWeeklyAiSummary,
+} from '../services/weeklyReport.js';
+import { reportWeek, weekFromKey } from '../util/weekWindow.js';
 
 const router = Router();
 
@@ -44,6 +48,36 @@ router.post('/quarterly/regenerate', async (_req: Request, res: Response) => {
     console.error('[report] quarterly regeneration failed:', err);
     res.status(500).json({ error: 'Report generation failed.' });
   }
+});
+
+// --- weekly spending report (services/weeklyReport.ts) -------------------------
+// Past reports (newest first), the week a new report would cover, and whether
+// the optional AI summary is on.
+router.get('/weekly', (_req: Request, res: Response) => {
+  res.json({ reports: listWeeklyReports(), currentWeek: reportWeek().key, aiSummary: getWeeklyAiSummary() });
+});
+// Build (or rebuild) one week's report and store it. Body: { week?: 'YYYY-MM-DD' (a Monday) }.
+router.post('/weekly/generate', async (req: Request, res: Response) => {
+  const week = typeof req.body?.week === 'string' ? req.body.week : undefined;
+  if (week && !weekFromKey(week)) return res.status(400).json({ error: 'week must be a Monday (YYYY-MM-DD)' });
+  try {
+    const m = await generateWeeklyReport({ week });
+    res.json({ key: m.week.key, start: m.week.start, end: m.week.end, total: m.total });
+  } catch (err) {
+    console.error('[report] weekly failed:', err);
+    res.status(500).json({ error: 'weekly report failed' });
+  }
+});
+router.put('/weekly/settings', (req: Request, res: Response) => {
+  if (typeof req.body?.aiSummary === 'boolean') setWeeklyAiSummary(req.body.aiSummary);
+  res.json({ aiSummary: getWeeklyAiSummary() });
+});
+// A stored report: the email HTML (default) or ?format=text.
+router.get('/weekly/:key', (req: Request, res: Response) => {
+  const r = getStoredWeeklyReport(req.params.key);
+  if (!r) return res.status(404).json({ error: 'no report for that week' });
+  if (req.query.format === 'text') return res.type('text/plain').send(r.text);
+  res.type('html').send(r.html);
 });
 
 export default router;

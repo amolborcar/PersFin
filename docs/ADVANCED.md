@@ -119,6 +119,22 @@ changes apply within a few seconds.
 
 See `categories.example.json` for the full default list.
 
+## Weekly report
+
+Setup → **Weekly reports** builds a report for the week (Monday to Sunday) and
+keeps past ones. It shows what you spent compared with last week and your
+8-week average, each budget's month-to-date and expected month-end, the biggest
+changes in your regular spending, recurring charges (new ones and price
+changes), and how many transactions still need a category.
+
+- Expected month-end adds what the category usually costs in the rest of a
+  month (average of the last 3 months), so a bill you already paid does not show
+  as "at risk".
+- **AI summary** (off by default) adds a few sentences from your local Claude
+  Code. It sends only the week's totals by category.
+- Set `KEVFIN_PUBLIC_URL` (for example your Tailscale address) so the report's
+  "Review them" link opens KevFin from another device.
+
 ## How the AI assistant works
 
 The built-in assistant **does not use a paid API key.** It runs your **locally
