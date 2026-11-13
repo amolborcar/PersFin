@@ -4,13 +4,30 @@ This plan changes KevFin into a personal, YNAB-style budgeting app for one
 user on one always-on Mac mini. Each phase is one commit (or one PR), so CI
 checks each step.
 
+The repository `amolborcar/PersFin` is independent. It left the fork network
+of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
+
+## Status
+
+| Phase | Status |
+|---|---|
+| 0 Baseline | Done. Build passes; tests pass (server 383, client 153). |
+| 1 SimpleFIN → Plaid | Done. Build passes; tests pass (server 388, client 153). |
+| 2 Remove real estate | Done, including the Mortgage category (migration 9). Build passes; tests pass (server 349, client 143). |
+| 3 macOS only | Done. Build passes; tests pass (server 349, client 143). The `.dmg` build was not run (it needs a macOS runner or the Mac mini). |
+| 3b launchd | Done in code; not yet tested on the Mac mini. Build passes; tests pass (server 363, client 143, desktop 6). Test steps: `DESKTOP.md` → "Keep running in the background". |
+| 4 Category file | Done. Build passes; tests pass (server 378, client 143, desktop 6). |
+| 5–9 | Not started |
+
+Update this table at the end of each phase.
+
 ## Decisions
 
 | # | Topic | Decision |
 |---|---|---|
 | 1 | Investments | Keep. Replace SimpleFIN with Plaid Investments (`investmentsHoldingsGet`, `investmentsTransactionsGet`). |
 | 2 | Budget model | Keep category targets. Zero-based budgeting is a later project. |
-| 3 | Housing | Remove real-estate tracking. Spending categories come from the personal category file. |
+| 3 | Housing | Remove real-estate tracking and the Mortgage category. The owner rents; Rent is the housing category. Spending categories come from the personal category file. |
 | 4 | Push | ntfy, self-hosted on the Mac mini, reached over Tailscale. iOS wake-ups go through the ntfy.sh upstream relay, which receives only a message ID. |
 | 5 | Email | The user's own SMTP account with an app password, over TLS. |
 | 6 | Always on | macOS launchd services on the Mac mini. Remove Docker and NAS support. |
@@ -28,8 +45,14 @@ checks each step.
   send balances or account numbers.
 - **Plaid investments.** Plaid gives no lot open date, so the cost-basis
   estimate (shares × price on the open date) cannot run for Plaid accounts. Some
-  employer plans report no cost basis. Plaid gives 24 months of investment
-  transactions; the old SimpleFIN backfill gave about 5 years.
+  employer plans report no cost basis.
+- **History depth.** The brokerage backfill uses today's holdings × historical
+  prices, so it still covers about 5 years. Cash and credit history is rebuilt
+  from Plaid transactions, which cover up to 2 years.
+- **Upgrade of an existing database.** Migration 7 deletes all SimpleFIN data
+  (connections, accounts, their transactions and balance history, caches).
+  Take a backup (Setup → Download backup) before the first start of the new
+  version if the database has SimpleFIN accounts.
 - **Plaid access.** The Investments product must be enabled for the Plaid
   production account. Accounts linked without investment consent must be linked
   again (Plaid update mode).
@@ -51,9 +74,9 @@ checks each step.
      `quantity` → `shares`, and set `acquired` to `null`.
    - Map cash positions (`security.type === 'cash'`) to the cash symbol the code
      uses now.
-3. In `services/plaid.ts`, add `fetchTransactions()` for the balance backfill:
-   - Cash and credit accounts: read the `transactions` table.
-   - Brokerage accounts: call `investmentsTransactionsGet`.
+3. Keep the existing `fetchPlaidTransactions()` for the cash and credit
+   backfill. `investmentsTransactionsGet` is not necessary: the brokerage
+   backfill uses holdings × historical prices.
 4. Point `allocation.ts`, `performance.ts`, and `backfill.ts` at the Plaid
    functions.
 5. Delete `routes/simplefin.ts`, `services/simplefin.ts`, and
@@ -67,10 +90,14 @@ checks each step.
    `recurring.ts`, `data.ts`, `db/providerCache.ts`, `util/categorize.ts`,
    `Setup.tsx`, `Welcome.tsx`, `Dashboard.tsx`, `ConnectPlaid.tsx`,
    `lib/merchantLogo.ts`.
-9. Change the SimpleFIN test fixtures to the Plaid shape. Do not delete test
-   cases. Affected: `budget.test.ts`, `budgetFixes.test.ts`,
+9. Change the SimpleFIN test fixtures to the Plaid shape with the shared
+   helper `server/src/db/plaidSeed.ts` (also used by `scripts/seed-demo.ts`).
+   Do not delete test cases. Affected: `budget.test.ts`, `budgetFixes.test.ts`,
    `budgetGolden.test.ts`, `feedStore.test.ts`, `netWorthRefresh.test.ts`,
-   `refreshErrors.test.ts`, `rulesReview.test.ts`.
+   `refreshErrors.test.ts`, `rulesReview.test.ts`. The golden budget snapshots
+   must stay unchanged.
+   Move the account rename/category/hide endpoint from `/api/simplefin/accounts`
+   to `/api/accounts` (`routes/accounts.ts`).
 10. Add tests for the Plaid → `Holding` mapping: null cost basis, cash
     positions, missing ticker.
 11. Verify: build and tests pass. Plaid link, sync, and the Investments page
@@ -89,18 +116,34 @@ checks each step.
    `shared/apiTypes.ts`, `keys.ts` (`OPENWEBNINJA_KEY`, `APILLOW_KEY`), the
    `properties` proposal in `ingest.ts`, and home equity in `Forecast.tsx` and
    `lib/forecastSim.ts`.
-4. Remove `MORTGAGE_RE` and the mortgage liability logic from `budget.ts`. Keep
-   the credit-card logic.
-5. Increase `CURRENT_BACKFILL_VERSION` in `historyCatchUp.ts`.
-6. Verify: `grep -riE "zillow|zhvi|mortgage|real.?estate"` finds no leftovers.
-   Build and tests pass.
+4. Remove the Mortgage budget category: the owner rents and tracks rent
+   (category Rent). Remove the special handling that kept mortgage payments
+   out of spending, the `MORTGAGE_RE` auto-category, the mortgage terms in the
+   liability-account pattern, the Budget "Housing carry" card, the mortgage
+   exclusion in recurring bills, and the `mortgage` fields in the budget and
+   cash-flow APIs. Migration 9 removes the category from existing databases
+   the same way the UI removes a category (rules and target deleted, imported
+   rows moved to Miscellaneous).
+5. Do not increase `CURRENT_BACKFILL_VERSION`. Migration 8 sets each stored
+   day's `net_worth` to its `accounts_total`, which is exact; a version bump
+   would instead overwrite observed history with estimates.
+6. Verify: the remaining `real estate` mentions are the REIT asset class in the
+   allocation view, old migrations, and comments. Build and tests pass.
+   The golden budget fixture's housing payment is now rent; the snapshots
+   change by that (and by the removed `housing`/`mortgage` fields).
 
 ## Phase 3: macOS only
 
 1. Remove the `win:` and `nsis:` blocks from `desktop/electron-builder.yml`.
 2. Remove the `windows-2022` entry from `.github/workflows/desktop-build.yml`.
 3. Delete `Dockerfile`, `.dockerignore`, `docker-compose*.yml`, `DEPLOY.md`,
-   `DEPLOY-SYNOLOGY.md`, and `.github/workflows/publish-image.yml`.
+   `DEPLOY-SYNOLOGY.md`, `kevfin.env.example` (the Docker keys file), and
+   `.github/workflows/publish-image.yml`.
+4. Remove the CI step that fast-forwards `production` after a push to `main`
+   (it fed the NAS deployment).
+5. Remove Windows code paths in `desktop/main.js` and `desktop/scripts/`, the
+   Windows and Docker rows in `scripts/release.mjs`, and the Windows and Docker
+   instructions in `README.md`, `DESKTOP.md` and `docs/ADVANCED.md`.
 
 ## Phase 3b: Always on with launchd (Mac mini)
 
@@ -132,6 +175,20 @@ checks each step.
 7. Tests: plist generation (paths, environment, schedule) and endpoint
    idempotency.
 
+Implementation (done):
+- `desktop/launchd.js` builds the agents (pure, tested with `node --test`);
+  `desktop/main.js` installs/removes them with `launchctl bootstrap`/`bootout`,
+  opens a window to the background server when it answers, and otherwise runs
+  its own child server. Moving the storage location rewrites the agents.
+- `server/src/services/jobs.ts` + `POST /api/jobs/:name` (`daily-sync`,
+  `snapshot`): idempotent per local day; `?force=1` reruns. node-cron calls the
+  same jobs unless `KEVFIN_SCHEDULER=launchd`.
+- `KEVFIN_LISTEN=local+tailscale` (`server/src/util/listen.ts`): binds
+  127.0.0.1, ::1 and Tailscale addresses (100.64.0.0/10, fd7a:115c:a1e0::/48),
+  re-checked every 60 s. Both the launchd server and the app's child server use it.
+- `GET /api/meta/power` reads `pmset -g`; Setup shows a warning when system
+  sleep is on.
+
 ## Phase 4: Personal category file
 
 1. Store the file at `data/categories.json` (`data/` is git-ignored). Add
@@ -160,6 +217,25 @@ checks each step.
 6. When a category with transactions or rules is deleted or renamed, move them
    to `fallback` and show a warning.
 7. Tests: validation, missing file, rename and delete of rules.
+
+Implementation (done) — differences from the steps above:
+- The file is next to the database (`data/categories.json` by default, or
+  `KEVFIN_CATEGORIES_PATH`), so a moved data folder carries it. Template:
+  `categories.example.json` (a test keeps it equal to the built-in defaults).
+- No `system` block: the six system categories (Paychecks, Other Income,
+  Dividends & Capital Gains, Transfers, Credit Card Payment, Miscellaneous) keep
+  fixed names because the budget logic uses them in many places. The loader adds
+  any that are missing. Categories in the group named "Income" count as income.
+- No `monthlyTarget` in the file: budget targets stay in the app (Budget page).
+- New optional `aliases` per category: an in-app rename keeps the old name as an
+  alias, so automatic categorization and imports that produce the built-in name
+  still land in the renamed category. Old display labels in an existing
+  database become real names (with aliases) on first start.
+- The file is watched (2 s polling). An invalid file is not applied; the error
+  and any warnings show in Budget → Manage categories and in
+  `GET /api/budget/categories/file`.
+- Restoring a backup re-creates the file from the restored database (the old
+  file is kept as `categories.json.pre-restore-<time>.bak`).
 
 ## Phase 5: AI categorization
 
@@ -205,7 +281,10 @@ checks each step.
    config uses `upstream-base-url: https://ntfy.sh` for iOS. "Send test push"
    button.
 3. **Privacy level** per channel: `full`, `totals only`, `notice only`.
-4. **Run endpoint** `POST /api/report/weekly/run`: build, store, and send once
+4. **Run endpoint**: add a `weekly-report` job to `server/src/services/jobs.ts`
+   (`JOB_NAMES`, keyed per week instead of per day) so it runs through
+   `POST /api/jobs/weekly-report`, and add its agent (Sunday 19:00,
+   `Weekday: 0`) to `JOBS` in `desktop/launchd.js`. Build, store, and send once
    per week key. On server start, send the last finished week if it was not
    sent.
 5. Update `CLAUDE.md` hard constraints.
@@ -226,9 +305,14 @@ Recharts, with data shaping in `client/src/lib/*.ts` and Vitest tests.
 ## Phase 9: Documentation and cleanup
 
 1. Rewrite `README.md`. Update `CLAUDE.md`, `DESKTOP.md`, `docs/ADVANCED.md`,
-   and `kevfin.env.example`.
-2. Remove dead code and unused packages.
-3. Optional rename of the app, with a one-time data path migration.
+   and `server/.env.example`.
+2. Remove links to the upstream project `kxl3785/KevFin`: releases, issues, and
+   the donation link in `README.md`.
+3. Delete `.github/workflows/update-irs-limits.yml` and
+   `.github/agent-tasks/update-irs-limits.md`, or set up the `AGENT_CMD` secret.
+   This repository does not have that secret.
+4. Remove dead code and unused packages.
+5. Optional rename of the app, with a one-time data path migration.
 
 ## Order
 

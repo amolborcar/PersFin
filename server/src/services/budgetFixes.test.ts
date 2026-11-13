@@ -8,13 +8,13 @@ import type { AddressInfo } from 'net';
  * DB-backed regression tests for budget correctness fixes: refund netting,
  * CSV import/dedup behavior, rule-key normalisation, category removal and the
  * category routes. Same harness as budgetGolden.test.ts (throwaway DB, pinned
- * clock, seeded SimpleFIN cache) but with its own small fixture.
+ * clock, seeded Plaid cache) but with its own small fixture.
  */
 
 const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-fixes-'));
 process.env.DB_PATH = path.join(TMP, 'fixes.db');
 
-const { refreshConnection } = await import('./simplefin.js');
+const { seedPlaidItem } = await import('../db/plaidSeed.js');
 const budget = await import('./budget.js');
 const { getDb } = await import('../db/schema.js');
 const { default: express } = await import('express');
@@ -49,11 +49,10 @@ async function seed() {
       tx('2026-05-18', -12.34, 'DUPE CAFE'),
     ],
   };
-  db.prepare('INSERT INTO simplefin_connections (id, access_url) VALUES (1, ?)')
-    .run('https://demo:demo@bridge.example.invalid/simplefin');
-  db.prepare('INSERT OR REPLACE INTO provider_cache (key, fetched_at, payload) VALUES (?, ?, ?)')
-    .run('sf_cache_1', NOW.getTime(), JSON.stringify([checking]));
-  await refreshConnection(1, 'https://demo:demo@bridge.example.invalid/simplefin');
+  seedPlaidItem(db, 'fixes-item', [{
+    id: checking.id, org: checking.org.name, name: checking.name, balance: parseFloat(checking.balance),
+    transactions: checking.transactions.map(t => ({ ...t, amount: parseFloat(t.amount) })),
+  }], NOW.getTime());
 
   await budget.applyCategoryRule('zz grocer', 'Groceries', 'one');
   await budget.applyCategoryRule('zz gadgets', 'Electronics', 'one');
@@ -220,15 +219,16 @@ describe('removeCategory', () => {
 describe('category routes', () => {
   it('PATCH/DELETE /category/:name use the (already decoded) param — "50% off" does not throw', async () => {
     const created = budget.addCategory('50% off');
-    const enc = encodeURIComponent(created);
-    const patch = await fetch(`${base}/category/${enc}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label: 'Half price' }),
+    const patch = await fetch(`${base}/category/${encodeURIComponent(created)}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label: '25% off' }),
     });
     expect(patch.status).toBe(200);
-    expect(budget.getCategoryLabeler().label(created)).toBe('Half price');
-    const del = await fetch(`${base}/category/${enc}`, { method: 'DELETE' });
-    expect(del.status).toBe(200);
+    // A rename changes the category's real name (references move with it).
+    expect(budget.getActiveCategories()).toContain('25% off');
     expect(budget.getActiveCategories()).not.toContain(created);
+    const del = await fetch(`${base}/category/${encodeURIComponent('25% off')}`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(budget.getActiveCategories()).not.toContain('25% off');
   });
 
   it('POST /categories/restore rejects an empty or malformed body without wiping anything', async () => {

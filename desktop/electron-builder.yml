@@ -11,6 +11,7 @@ directories:
 files:
   - main.js
   - preload.js
+  - launchd.js
   - package.json
 
 # We ship a fully-staged server (incl. node_modules with the Electron-rebuilt
@@ -28,7 +29,7 @@ extraResources:
 
 # Unsigned/un-notarized (no Apple Developer cert). identity:null skips real
 # signing; scripts/afterPack.js then ad-hoc signs the bundle so Apple Silicon
-# doesn't reject it as "damaged". Windows stays unsigned (SmartScreen warning).
+# doesn't reject it as "damaged". macOS is the only target.
 mac:
   target: dmg
   category: public.app-category.finance
@@ -36,11 +37,3 @@ mac:
 
 dmg:
   writeUpdateInfo: false
-
-win:
-  target: nsis
-
-nsis:
-  oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true

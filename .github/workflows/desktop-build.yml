@@ -1,9 +1,8 @@
 name: Desktop build
 
-# Builds the unsigned standalone desktop apps (macOS .dmg + Windows .exe).
-# Run manually from the Actions tab, or automatically when a v* tag is pushed.
-# Building the Windows app needs a Windows runner (native better-sqlite3), which
-# is why this lives in CI rather than a local cross-build.
+# Builds the unsigned standalone macOS desktop app (.dmg). macOS is the only
+# supported platform. Run manually from the Actions tab, or automatically when
+# a v* tag is pushed.
 
 on:
   workflow_dispatch:
@@ -13,26 +12,11 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    # Needed so the tag build can attach installers to the GitHub Release.
+    name: macos-latest
+    runs-on: macos-latest
+    # Needed so the tag build can attach the installer to the GitHub Release.
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            artifact: KevFin-macos
-            files: |
-              desktop/dist-app/*.dmg
-          # Pin windows-2022: its Visual Studio 2022 is what node-gyp can detect
-          # to compile better-sqlite3 (windows-latest ships a newer VS that
-          # node-gyp can't parse).
-          - os: windows-2022
-            artifact: KevFin-windows
-            files: |
-              desktop/dist-app/*.exe
     defaults:
       run:
         shell: bash
@@ -61,8 +45,8 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.files }}
+          name: KevFin-macos
+          path: desktop/dist-app/*.dmg
           if-no-files-found: error
 
       # On a v* tag, also attach the raw installer to that tag's GitHub Release so
@@ -72,4 +56,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.files }}
+          files: desktop/dist-app/*.dmg

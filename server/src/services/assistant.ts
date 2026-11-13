@@ -117,7 +117,7 @@ export function getAuthStatus(): AuthStatus {
 const money = (n: number | null | undefined) =>
   n == null ? '—' : '$' + Math.round(n).toLocaleString();
 
-interface Snapshot { date: string; accounts_total: number; real_estate_total: number; net_worth: number }
+interface Snapshot { date: string; accounts_total: number; net_worth: number }
 
 // Assemble a compact, current snapshot of the user's finances for the model to
 // reason over. Each section is best-effort — a failure in one (e.g. a live
@@ -133,8 +133,7 @@ export async function buildFinancialContext(): Promise<string> {
       parts.push(
         `## Net worth (as of ${latest.date})\n` +
         `- Net worth: ${money(latest.net_worth)}\n` +
-        `- Accounts & assets: ${money(latest.accounts_total)}\n` +
-        `- Real estate (equity): ${money(latest.real_estate_total)}`,
+        `- Accounts & assets: ${money(latest.accounts_total)}`,
       );
       // A handful of historical anchors so the model can speak to the trend.
       const anchors = [365, 180, 90, 30]
@@ -154,7 +153,7 @@ export async function buildFinancialContext(): Promise<string> {
   } catch (e) { console.error('[assistant] net worth context failed:', e); }
 
   try {
-    const { accounts, manualAssets, properties } = getCurrentBreakdown();
+    const { accounts, manualAssets } = getCurrentBreakdown();
     const visible = accounts.filter(a => !a.hidden);
     if (visible.length) {
       const lines = visible.map(a => `  - ${a.name} (${a.org_name}, ${a.category}): ${money(a.balance)}`);
@@ -163,13 +162,6 @@ export async function buildFinancialContext(): Promise<string> {
     if (manualAssets.length) {
       const lines = manualAssets.map(a => `  - ${a.name} (${a.category}): ${money(a.value)}`);
       parts.push(`## Manual assets\n${lines.join('\n')}`);
-    }
-    if (properties.length) {
-      const lines = properties.map(p => {
-        const equity = (p.zestimate ?? 0) - (p.mortgage_balance ?? 0);
-        return `  - ${p.address}: value ${money(p.zestimate)}, mortgage ${money(p.mortgage_balance)}, equity ${money(equity)}`;
-      });
-      parts.push(`## Real estate\n${lines.join('\n')}`);
     }
   } catch (e) { console.error('[assistant] breakdown context failed:', e); }
 
@@ -232,7 +224,7 @@ export async function exportChatData(dir: string, clientForecast?: unknown): Pro
 
   try {
     writeJson('accounts.json', getCurrentBreakdown(),
-      'All accounts (including hidden), manual assets, and properties, with balances and categories.');
+      'All accounts (including hidden) and manual assets, with balances and categories.');
   } catch (e) { console.error('[assistant] export accounts failed:', e); }
 
   try {
@@ -252,7 +244,7 @@ export async function exportChatData(dir: string, clientForecast?: unknown): Pro
 
   try {
     writeJsonl('net_worth_history.jsonl', getNetWorthHistory(10000) as unknown[],
-      'Daily net-worth snapshots over time, one JSON object per line: date, accounts_total, real_estate_total, net_worth.');
+      'Daily net-worth snapshots over time, one JSON object per line: date, accounts_total, net_worth.');
   } catch (e) { console.error('[assistant] export history failed:', e); }
 
   try {
@@ -261,9 +253,9 @@ export async function exportChatData(dir: string, clientForecast?: unknown): Pro
     // the summary figures and per-category targets/spend.
     writeJson('budget.json', {
       month: b.month, months: b.months,
-      income: b.income, spending: b.spending, mortgage: b.mortgage, totalBudget: b.totalBudget,
+      income: b.income, spending: b.spending, totalBudget: b.totalBudget,
       byCategory: b.byCategory, comparison: b.comparison,
-    }, 'Current-month budget summary: income, spending, mortgage, and per-category target vs. spent (with YTD where set).');
+    }, 'Current-month budget summary: income, spending, and per-category target vs. spent (with YTD where set).');
   } catch (e) { console.error('[assistant] export budget failed:', e); }
 
   // Forecasting / retirement-planning data. The Monte Carlo lives in the browser,
@@ -302,7 +294,7 @@ export function systemPrompt(context: string, dataFiles = ''): string {
     `You are the built-in financial assistant for KevFin, a personal net-worth ` +
     `tracker. The user is the owner of this data and is asking about their own ` +
     `finances. Answer their questions using the live snapshot of their accounts, ` +
-    `investments, real estate, and budget provided below.\n\n` +
+    `investments, and budget provided below.\n\n` +
     `Guidelines:\n` +
     `- Be concise and direct. Lead with the answer, then any supporting detail.\n` +
     `- Use the figures from the snapshot; format money clearly (e.g. $1,234).\n` +

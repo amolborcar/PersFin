@@ -49,17 +49,17 @@ export function monthLabel(key: string, long = false): string {
 
 export interface Attribution {
   start: number; end: number;       // whole dollars
-  saved: number; home: number;      // whole dollars
+  saved: number;                    // whole dollars
   market: number;                   // remainder, whole dollars
 }
 
-// Splits (end − start) into saved + home-equity change + remainder. Everything is
-// rounded to whole dollars FIRST and the remainder is derived from the rounded
-// parts, so start + saved + home + market === end exactly as printed.
-export function attributeChange(a: { start: number; end: number; saved: number; homeEquityDelta: number }): Attribution {
+// Splits (end − start) into saved + remainder. Everything is rounded to whole
+// dollars FIRST and the remainder is derived from the rounded parts, so
+// start + saved + market === end exactly as printed.
+export function attributeChange(a: { start: number; end: number; saved: number }): Attribution {
   const start = Math.round(a.start), end = Math.round(a.end);
-  const saved = Math.round(a.saved), home = Math.round(a.homeEquityDelta);
-  return { start, end, saved, home, market: end - start - saved - home };
+  const saved = Math.round(a.saved);
+  return { start, end, saved, market: end - start - saved };
 }
 
 // --- month-end series ----------------------------------------------------------

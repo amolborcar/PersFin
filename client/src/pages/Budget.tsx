@@ -19,25 +19,9 @@ import { fmtTxnDate, rowProps } from '../lib/budgetUi.ts';
 
 interface BudgetTxn { id: string; date: string; amount: number; payee: string; account: string; merchant: string; category: string; suggested: string; description: string; memo: string; postedAt: number; transactedAt: number | null; flipped?: boolean; amountEdited?: boolean; ruleId?: number | null; ruleSource?: 'merchant' | 'smart' | 'base' | 'import' | 'auto' }
 interface CatRow { category: string; spent: number; count: number; target: number; period?: 'monthly' | 'annual'; ytdSpent?: number; excluded?: boolean }
-// Property-derived housing carry (mirror of server RealEstateCarry). Informational —
-// not counted in spending; the mortgage payment stays excluded.
-interface PropertyCarry {
-  id: number; address: string; value: number; balance: number; equity: number; rate: number | null;
-  monthlyPI: number; annualInterest: number; annualPrincipal: number;
-  propertyTaxAnnual: number; insuranceAnnual: number; hoaAnnual: number; rentalIncomeAnnual: number;
-  monthlyCarry: number; payoffISO: string;
-}
-interface HousingCarry {
-  properties: PropertyCarry[];
-  totals: {
-    value: number; balance: number; equity: number;
-    monthlyPI: number; annualInterest: number; annualPrincipal: number;
-    propertyTaxAnnual: number; insuranceAnnual: number; hoaAnnual: number; rentalIncomeAnnual: number; monthlyCarry: number;
-  };
-}
 interface BudgetData {
   months: string[]; month: string; transactions: BudgetTxn[]; byCategory: CatRow[];
-  needsReview: BudgetTxn[]; recent: BudgetTxn[]; income: number; spending: number; mortgage: number; housing?: HousingCarry; totalBudget: number; categories: string[]; groups: PickerGroup[];
+  needsReview: BudgetTxn[]; recent: BudgetTxn[]; income: number; spending: number; totalBudget: number; categories: string[]; groups: PickerGroup[];
   // For the in-progress month the comparisons are measured through the same day (asOfDay).
   comparison: { priorMonth: number | null; priorYearAvg: number | null; priorYears: number[] };
   asOfDay: number | null; daysInMonth: number;
@@ -47,7 +31,7 @@ interface BudgetData {
 }
 interface ImportedTxn { id: string; date: string; amount: number; payee: string; account: string; category: string | null; accepted: boolean }
 
-const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Mortgage', 'Miscellaneous']);
+const PROTECTED = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment', 'Miscellaneous']);
 
 // Map a transaction row to the shared detail-popup shape.
 const txnToDetail = (t: BudgetTxn): TxnDetail => ({
@@ -92,98 +76,6 @@ function periodLabels(d: BudgetData) {
     : yrs.length === 1 ? `${when} ${span}`
     : `avg of ${when} ${span}`;
   return { spent, prevLabel, yearLabel, curName: fmtMonthShort(monthStart(cur)), prevName: fmtMonthShort(monthStart(prev)) };
-}
-
-// Monthly carry components for a property (or the aggregate), derived from the
-// annual figures. `netCarry` is the total carry after any rental/income offset.
-function carryFigures(c: {
-  annualInterest: number; annualPrincipal: number; propertyTaxAnnual: number;
-  insuranceAnnual: number; hoaAnnual: number; rentalIncomeAnnual: number; monthlyCarry: number;
-}) {
-  return {
-    interestMo: c.annualInterest / 12, principalMo: c.annualPrincipal / 12,
-    taxMo: c.propertyTaxAnnual / 12, insMo: c.insuranceAnnual / 12, hoaMo: c.hoaAnnual / 12,
-    rentalMo: c.rentalIncomeAnnual / 12, netCarry: c.monthlyCarry - c.rentalIncomeAnnual / 12,
-  };
-}
-
-// Informational housing-carry breakdown derived from the dashboard's real-estate
-// data (loan terms + property tax/insurance/HOA). It does NOT change spending —
-// the mortgage stays excluded — but it surfaces the true interest cost vs the
-// principal that builds equity, plus the other carrying costs and payoff timing.
-// With more than one holding the carry is broken out per property so each one's
-// true cost is visible on its own.
-function HousingCarryCard({ housing, money }: { housing: HousingCarry; money: (n: number) => string }) {
-  const t = housing.totals;
-  const total = carryFigures(t);
-  const multi = housing.properties.length > 1;
-
-  const row = (label: string, value: number, note?: string, color?: string) => value > 0 && (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13, padding: '3px 0' }}>
-      <span style={{ color: 'var(--muted)' }}>{label}{note && <span style={{ fontSize: 11, opacity: 0.7 }}> · {note}</span>}</span>
-      <span style={{ fontWeight: 600, color: color ?? 'var(--text)' }}>{money(value)}/mo</span>
-    </div>
-  );
-  // The shared interest/principal/tax/insurance/HOA/income rows for a carry shape.
-  const breakdown = (c: ReturnType<typeof carryFigures>) => (
-    <div>
-      {row('Mortgage interest', c.interestMo, 'cost', 'var(--red)')}
-      {row('Mortgage principal', c.principalMo, 'builds equity', 'var(--green)')}
-      {row('Property tax', c.taxMo)}
-      {row('Insurance', c.insMo)}
-      {row('HOA', c.hoaMo)}
-      {row('Rental / income', c.rentalMo, 'income', 'var(--green)')}
-    </div>
-  );
-  const netLabel = (net: number) => (
-    <span style={{ fontSize: 18, fontWeight: 700, color: net < 0 ? 'var(--green)' : 'var(--text)' }}>
-      {net < 0 ? `+${money(-net)}` : money(net)}/mo{net < 0 ? ' net income' : ''}
-    </span>
-  );
-
-  return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4, gap: 8, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600 }}>Housing carry{total.rentalMo > 0 ? ' (net of income)' : ''}</h2>
-        {netLabel(total.netCarry)}
-      </div>
-      <p style={{ color: 'var(--muted)', fontSize: 11.5, marginBottom: 12 }}>
-        Informational — not counted in spending. Of your mortgage payment, the <strong style={{ color: 'var(--red)' }}>interest</strong> is a true cost while the <strong style={{ color: 'var(--green)' }}>principal</strong> builds equity.{total.rentalMo > 0 ? ' Rental income offsets the carrying costs.' : ''}{multi ? ' Broken out per holding below.' : ''}
-      </p>
-
-      {multi ? (
-        // One block per holding, each with its own breakdown and equity/payoff footer.
-        housing.properties.map(p => {
-          const f = carryFigures(p);
-          const payoffYear = p.payoffISO ? p.payoffISO.slice(0, 4) : null;
-          return (
-            <div key={p.id} style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{p.address}</span>
-                {netLabel(f.netCarry)}
-              </div>
-              {breakdown(f)}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>
-                <span>Equity {money(p.equity)} of {money(p.value)}</span>
-                {payoffYear && <span>Mortgage payoff ~{payoffYear}</span>}
-              </div>
-            </div>
-          );
-        })
-      ) : (
-        <>
-          {breakdown(total)}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12, color: 'var(--muted)', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-            <span>Equity {money(t.equity)} of {money(t.value)}</span>
-            {(() => {
-              const payoff = housing.properties.map(p => p.payoffISO).filter(Boolean).sort().pop();
-              return payoff ? <span>Mortgage payoff ~{payoff.slice(0, 4)}</span> : null;
-            })()}
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
@@ -307,12 +199,16 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
   }
   // Open/close the manage panel. Opening snapshots the current category state so
   // edits made while open can be undone in one click, and loads the group list.
+  // Where the personal category file lives and what its last load reported.
+  const [catFile, setCatFile] = useState<{ path: string; error: string | null; warnings: string[] } | null>(null);
   async function openManage() {
     setManageOpen(true);
     try { setCatSnapshot(await (await fetch('/api/budget/categories/state')).json()); }
     catch { setCatSnapshot(null); }
     try { setGroupNames(await (await fetch('/api/budget/categories/groups')).json()); }
     catch { /* keep prior */ }
+    try { setCatFile(await (await fetch('/api/budget/categories/file')).json()); }
+    catch { setCatFile(null); }
   }
   // Reclassify a category into another group, or reorder it within its group.
   async function setCatGroup(canonical: string, group: string) {
@@ -388,8 +284,8 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
 
   // The category rows to actually show for budgeting: the top N by spend (already
   // sorted server-side), minus any the user hid, plus any they explicitly inserted
-  // (synthesised at $0 when they have no spend/target this month). Excluded rows
-  // like Mortgage always tag along.
+  // (synthesised at $0 when they have no spend/target this month). Rows the
+  // server marks excluded always tag along.
   const byCat = data?.byCategory ?? [];
   const ranked = byCat.filter(c => !c.excluded && !hiddenCats.includes(c.category));
   const topCats = ranked.slice(0, TOP_N);
@@ -498,11 +394,6 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
               style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 18px', cursor: 'pointer' }}>
               <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 4 }}>Spent · {lbl!.spent}</p>
               <p style={{ fontSize: 22, fontWeight: 700, color: 'var(--amber)' }}>{money(data.spending)}</p>
-              {data.mortgage > 0 && (
-                <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>
-                  + {money(data.mortgage)} mortgage (excluded · see Housing carry below)
-                </p>
-              )}
             </div>
             <div
               {...rowProps(() => { const tgt = compareMode === 'priorMonth' ? addMonths(data.month, -1) : addMonths(data.month, -12); if (data.months.includes(tgt)) viewMonthTxns(tgt); })}
@@ -614,7 +505,18 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
             {manageOpen && (
               <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <p style={{ fontSize: 11, color: 'var(--muted)' }}>Grouped by area, sorted A–Z. Rename inline, pick a group to reclassify, or × to remove — changes apply across transactions, charts and the cash-flow Sankey.</p>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    <p>Grouped by area, sorted A–Z. Rename inline, pick a group to reclassify, or × to remove — changes apply across transactions, charts and the cash-flow Sankey.</p>
+                    {catFile && (
+                      <p style={{ marginTop: 4 }} title="You can also edit this file directly; changes apply within a few seconds. Add a &quot;hint&quot; to a category to tell the AI what belongs in it.">
+                        Saved in your category file: <code style={{ fontSize: 10.5 }}>{catFile.path}</code>
+                      </p>
+                    )}
+                    {catFile?.error && (
+                      <p role="alert" style={{ marginTop: 4, color: 'var(--red)' }}>The file has an error and was not applied: {catFile.error}</p>
+                    )}
+                    {catFile?.warnings?.map(w => <p key={w} style={{ marginTop: 4, color: 'var(--amber)' }}>{w}</p>)}
+                  </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <button className="btn-ghost" disabled={catBusy || catSnapshot == null} onClick={undoCats}
                       title="Revert every change made since you opened this panel" style={{ fontSize: 11, padding: '4px 9px' }}>↩ Undo changes</button>
@@ -636,7 +538,8 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
                             <div key={canon} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 0' }}>
                               <span style={{ width: 20, textAlign: 'center', flexShrink: 0 }}>{c.emoji}</span>
                               <input key={`${canon}:${c.name}`} defaultValue={c.name}
-                                onBlur={e => { const v = e.target.value.trim(); if (v && v !== c.name && c.canonical) renameCat(c.canonical, v); }}
+                                readOnly={PROTECTED.has(canon)} title={PROTECTED.has(canon) ? 'System category — its name is fixed' : undefined}
+                                onBlur={e => { const v = e.target.value.trim(); if (v && v !== c.name && c.canonical && !PROTECTED.has(canon)) renameCat(c.canonical, v); }}
                                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 style={{ flex: 1, minWidth: 0, padding: '3px 6px', fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)' }} />
                               <select value={g.name} onChange={e => setCatGroup(canon, e.target.value)} title="Reclassify into another group"
@@ -773,11 +676,6 @@ export default function Budget({ onNavigate, privacy, onTogglePrivacy }: {
             </div>
           ))}
 
-          {/* Housing carry sits at the bottom: it's informational and rarely
-              changes, so it stays out of the way of the month's activity. */}
-          {data.housing && data.housing.totals.monthlyCarry > 0 && (
-            <HousingCarryCard housing={data.housing} money={money} />
-          )}
         </>
       )}
 
@@ -815,13 +713,10 @@ function TransactionsView({ money, moneyCents, cats, groups, filter, setFilter, 
   const dir = sortDir === 'asc' ? 1 : -1;
   const rows = [...filtered].sort((a, b) =>
     sortBy === 'amount' ? (a.amount - b.amount) * dir : (a.date.localeCompare(b.date) || (a.postedAt - b.postedAt)) * dir);
-  // In / Out by sign (Transfers already excluded server-side). Mortgage payments are
-  // listed but not counted, matching the Overview's "Spent" and the Cash Flow bars.
-  // These are gross by sign: a refund counts as In rather than netting against Out.
-  const counted = filtered.filter(t => t.category !== 'Mortgage');
-  const mortgageOut = filtered.filter(t => t.category === 'Mortgage').reduce((s, t) => s + Math.abs(t.amount), 0);
-  const inflow = counted.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-  const outflow = counted.filter(t => t.amount < 0).reduce((s, t) => s + -t.amount, 0);
+  // In / Out by sign (Transfers already excluded server-side). These are gross by
+  // sign: a refund counts as In rather than netting against Out.
+  const inflow = filtered.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const outflow = filtered.filter(t => t.amount < 0).reduce((s, t) => s + -t.amount, 0);
 
   const start = Math.max(0, Math.floor(scrollTop / ROW_H) - BUFFER);
   const end = Math.min(rows.length, Math.ceil((scrollTop + VIEW_H) / ROW_H) + BUFFER);
@@ -852,9 +747,8 @@ function TransactionsView({ money, moneyCents, cats, groups, filter, setFilter, 
         </div>
       </div>
       <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 10 }}
-        title="In and Out are summed by sign, so a refund counts as In. Mortgage payments are shown in the list but left out of the totals, as in the Overview.">
+        title="In and Out are summed by sign, so a refund counts as In.">
         In {money(inflow)} · Out {money(outflow)}
-        {mortgageOut > 0 && ` · excludes ${money(mortgageOut)} mortgage`}
       </p>
       {/* On a phone the columns don't fit; scroll the table sideways within the
           card (min-width keeps the columns legible) rather than squashing them. */}
@@ -870,17 +764,15 @@ function TransactionsView({ money, moneyCents, cats, groups, filter, setFilter, 
       <div ref={scrollRef} onScroll={e => setScrollTop(e.currentTarget.scrollTop)} style={{ maxHeight: VIEW_H, overflowY: 'auto', position: 'relative' }}>
         <div style={{ height: rows.length * ROW_H, position: 'relative' }}>
           {visible.map(({ t, idx }) => {
-            const excluded = t.category === 'Mortgage';
             return (
               <div key={t.id} {...rowProps(() => openTxnDetail(txnToDetail(t)))} title="Click for details"
-                style={{ position: 'absolute', top: idx * ROW_H, left: 0, right: 0, height: ROW_H, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: '84px 1fr 130px 140px 92px 26px', gap: 8, alignItems: 'center', fontSize: 13, borderBottom: '1px solid var(--border)', opacity: excluded ? 0.5 : 1, cursor: 'pointer' }}>
+                style={{ position: 'absolute', top: idx * ROW_H, left: 0, right: 0, height: ROW_H, boxSizing: 'border-box', display: 'grid', gridTemplateColumns: '84px 1fr 130px 140px 92px 26px', gap: 8, alignItems: 'center', fontSize: 13, borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
                 <span style={{ color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{fmtTxnDate(t.date)}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <MerchantIcon merchant={t.merchant} label={t.payee} size={24} />
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.payee}</span>
-                      {excluded && <span style={{ flexShrink: 0, fontSize: 9, color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 9, padding: '0px 6px', textTransform: 'uppercase', letterSpacing: 0.4 }}>excluded</span>}
                     </span>
                     {t.description && t.description.toLowerCase() !== t.payee.toLowerCase() && (
                       <span style={{ display: 'block', fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }} title={t.description}>{t.description}</span>

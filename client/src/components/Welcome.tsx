@@ -14,22 +14,17 @@ const STEPS: { icon: string; title: string; body: string }[] = [
   {
     icon: '🔒',
     title: 'Your data stays private',
-    body: 'KevFin runs on your own computer. Your data is stored only on this computer. Property-value and price lookups send only addresses and ticker symbols.',
+    body: 'KevFin runs on your own computer. Your data is stored only on this computer. Price lookups send only ticker symbols.',
   },
   {
     icon: '🔗',
     title: 'Connect your accounts',
-    body: 'On the Dashboard, open Financial Accounts → Manage connections to link your banks and brokerages. Add real estate in the Real Estate card and other assets in Manual Assets.',
+    body: 'On the Dashboard, open Financial Accounts → Manage connections to link your banks and brokerages. Add other assets in Manual Assets.',
   },
   {
     icon: '📊',
     title: 'Explore your finances',
     body: 'Use the tabs at the top: Dashboard for net worth, Investments for allocation, Budget for spending, and Forecast to project your retirement.',
-  },
-  {
-    icon: '🏡',
-    title: 'Sharper real-estate history',
-    body: 'A property’s value history defaults to a ZIP-level index (ZHVI). For a more accurate trend that follows your specific home, click edit on the property, open Value history, and paste the Zestimate history from Zillow — it overrides the ZIP average for that property.',
   },
   {
     icon: '💾',
@@ -40,8 +35,8 @@ const STEPS: { icon: string; title: string; body: string }[] = [
 
 // Page 2 — how to obtain the keys/tokens each connection needs. KevFin uses YOUR
 // own provider credentials, so the data path stays yours end-to-end. Steps mirror
-// the in-app flows: ConnectPlaid ("+ Plaid"), ConnectSimpleFIN ("+ SimpleFIN"),
-// and ClaudeLoginGate (the AI login panel).
+// the in-app flows: ConnectPlaid ("+ Plaid") and ClaudeLoginGate (the AI login
+// panel).
 const CONNECTIONS: {
   icon: string;
   title: string;
@@ -63,18 +58,6 @@ const CONNECTIONS: {
     link: { href: 'https://dashboard.plaid.com/developers/keys', label: 'Get your Plaid keys →' },
   },
   {
-    icon: '🔗',
-    title: 'SimpleFIN',
-    cost: 'Low-cost subscription',
-    body: 'A simple aggregator that often reaches accounts Plaid does not. You connect it with a one-time setup token.',
-    steps: [
-      'Create a SimpleFIN Bridge account (a small subscription fee) and link your banks there.',
-      'On your SimpleFIN account page, generate a new setup token and copy it.',
-      'In KevFin, go to Dashboard → Financial Accounts → Manage connections, click “+ SimpleFIN”, paste the token, and Connect.',
-    ],
-    link: { href: 'https://beta-bridge.simplefin.org/my-account', label: 'Get a SimpleFIN setup token →' },
-  },
-  {
     icon: '🤖',
     title: 'AI assistant',
     cost: 'Uses your Claude subscription — no API key',
@@ -82,7 +65,7 @@ const CONNECTIONS: {
     steps: [
       'Install Claude Code on this computer (or point the server at it by setting CLAUDE_BIN in server/.env).',
       'Open any AI feature in KevFin and click “Log in to Claude”, then type /login in the terminal that opens.',
-      'On Windows — or any OS — you can instead run “claude setup-token” in a terminal and paste the token into the login panel.',
+      'You can instead run “claude setup-token” in a terminal and paste the token into the login panel.',
     ],
     link: { href: 'https://docs.claude.com/en/docs/claude-code/overview', label: 'Install Claude Code →' },
   },
@@ -135,7 +118,7 @@ export default function Welcome() {
               <div style={{ fontSize: 40, marginBottom: 8 }} aria-hidden>👋</div>
               <h2 style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.5px' }}>Welcome to KevFin</h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 6, lineHeight: 1.5 }}>
-                Your private net-worth tracker — banks, investments, real estate, budgeting, and a
+                Your private net-worth tracker — banks, investments, budgeting, and a
                 retirement forecast, all in one place that runs on your own computer.
               </p>
             </div>

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { getBudget, getSpendingProjection, getReviewQueue, getCashFlow, getCashFlowTransactions, getTransactionsList, getCategoryGroups, getGroupNames, getCategoryLabeler, applyCategoryRule, suggestRules, countRule, applySmartRules, setTarget, setSignFlip, countSignFlip, getActiveCategories, addCategory, renameCategory, removeCategory, setCategoryGroup, importTransactions, reconcileImported, getImported, clearImported, deleteImported, updateImportedCategory, acceptImported, setTxnAmount, clearTxnAmount, getCategoryState, restoreCategoryState, resetCategoriesToDefault, type CategoryState } from '../services/budget.js';
+import { getCategoryFileReport } from '../services/categoryFile.js';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.post('/import', async (req: Request, res: Response) => {
   if (!csv) return res.status(400).json({ error: 'CSV body required' });
   try {
     const result = importTransactions(csv);
-    const { removed } = await reconcileImported(); // auto-remove SimpleFIN duplicates
+    const { removed } = await reconcileImported(); // auto-remove bank-feed duplicates
     res.json({ ...result, reconciled: removed });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'import failed' });
@@ -126,6 +127,9 @@ router.post('/categories/reset', (_req: Request, res: Response) => {
 });
 // The full ordered list of group names (for the reclassify dropdown).
 router.get('/categories/groups', (_req: Request, res: Response) => res.json(getGroupNames()));
+// Where the personal category file is, and what its last load reported (an
+// error means the file was not applied; warnings say what a load changed).
+router.get('/categories/file', (_req: Request, res: Response) => res.json(getCategoryFileReport()));
 
 // Create a new category; the server auto-picks an emoji from the name. Returns
 // the created (display) name so the caller can immediately assign it.

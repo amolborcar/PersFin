@@ -38,7 +38,7 @@ const FORECAST_PENDING_KEY = 'mon.fcPendingImport';
 // settings. Fields are kept loose (re-validated on commit) so the user can freely
 // edit any value before confirming.
 interface Proposal {
-  table: 'manual_assets' | 'imported_txns' | 'properties' | 'accounts' | 'cost_basis' | 'forecast';
+  table: 'manual_assets' | 'imported_txns' | 'accounts' | 'cost_basis' | 'forecast';
   summary: string;
   confidence: number;
   fields: Record<string, unknown>;
@@ -53,7 +53,6 @@ type Ingest =
 const TABLE_LABEL: Record<Proposal['table'], string> = {
   manual_assets: 'Manual asset',
   imported_txns: 'Transaction',
-  properties: 'Property',
   accounts: 'Account',
   cost_basis: 'Cost basis',
   forecast: 'Forecast input',
@@ -72,11 +71,6 @@ const FIELD_SPEC: Record<Proposal['table'], FieldSpec[]> = {
     { key: 'payee', label: 'Payee', type: 'text' },
     { key: 'amount', label: 'Amount', type: 'number' },
     { key: 'category', label: 'Category', type: 'text' },
-  ],
-  properties: [
-    { key: 'address', label: 'Address', type: 'text' },
-    { key: 'value', label: 'Value', type: 'number' },
-    { key: 'mortgage_balance', label: 'Mortgage', type: 'number' },
   ],
   accounts: [
     { key: 'org_name', label: 'Institution', type: 'text' },

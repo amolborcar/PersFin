@@ -1,21 +1,14 @@
 import { getDb } from '../db/schema.js';
-import { refreshAllAccounts } from './simplefin.js';
 import { refreshAllPlaid } from './plaid.js';
-import { refreshAllProperties } from './zillow.js';
-import { recomputeMortgageBalances } from './mortgage.js';
 import { taxBucket, TAX_BUCKETS, type TaxBucket } from '../util/taxBucket.js';
 import { recordRealObservation } from './observations.js';
 import { ProviderRefreshError } from './refreshErrors.js';
-import { getMeta, setMeta } from './meta.js';
-import type { Breakdown, Snapshot, Account, ManualAsset, Property } from '../shared/apiTypes.js';
+import type { Breakdown, Snapshot, Account, ManualAsset } from '../shared/apiTypes.js';
 
 // Recompute today's snapshot from whatever is currently in the DB.
-// Does NOT call Plaid/Zillow — safe to run after every manual edit.
+// Does NOT call Plaid — safe to run after every manual edit.
 export function takeSnapshot(): void {
   const db = getDb();
-
-  // Refresh amortized mortgage balances so equity reflects paydown to date.
-  recomputeMortgageBalances();
 
   const { accounts_total } = db.prepare(`
     SELECT
@@ -23,20 +16,13 @@ export function takeSnapshot(): void {
       + (SELECT COALESCE(SUM(value), 0) FROM manual_assets) AS accounts_total
   `).get() as { accounts_total: number };
 
-  // A property with no Zestimate yet still carries its mortgage liability
-  // (backfill values it the same way), so don't drop the whole row on a null.
-  const { real_estate_total } = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(zestimate, 0) - COALESCE(mortgage_balance, 0)), 0) AS real_estate_total
-    FROM properties
-  `).get() as { real_estate_total: number };
-
-  const net_worth = accounts_total + real_estate_total;
+  const net_worth = accounts_total;
   const date = new Date().toISOString().slice(0, 10);
 
   db.prepare(`
-    INSERT OR REPLACE INTO net_worth_snapshots (date, accounts_total, real_estate_total, net_worth)
-    VALUES (?, ?, ?, ?)
-  `).run(date, accounts_total, real_estate_total, net_worth);
+    INSERT OR REPLACE INTO net_worth_snapshots (date, accounts_total, net_worth)
+    VALUES (?, ?, ?)
+  `).run(date, accounts_total, net_worth);
 
   // Per-asset observations for the same day — the append-only history that
   // net_worth_snapshots (a single total) can't reconstruct after the fact.
@@ -47,16 +33,11 @@ export function takeSnapshot(): void {
     for (const m of db.prepare('SELECT id, value FROM manual_assets').all() as { id: number; value: number }[]) {
       recordRealObservation(db, `manual:${m.id}`, date, m.value);
     }
-    for (const p of db.prepare('SELECT id, zestimate, mortgage_balance FROM properties WHERE zestimate IS NOT NULL').all() as { id: number; zestimate: number; mortgage_balance: number }[]) {
-      recordRealObservation(db, `property:${p.id}`, date, p.zestimate - p.mortgage_balance);
-    }
   });
   observe();
 
   console.log(`[${date}] Net worth snapshot: $${net_worth.toLocaleString()}`);
 }
-
-const LAST_RE_REFRESH = 'last_real_estate_refresh';
 
 // Run every provider refresh to completion and report which ones failed, rather
 // than letting the first rejection abort the rest. A provider being briefly
@@ -85,7 +66,7 @@ export class RefreshFailedError extends Error {
 }
 
 // User-facing sentence naming what failed, e.g.
-// "Couldn't refresh Chase (Plaid: ITEM_LOGIN_REQUIRED), real estate — everything else synced."
+// "Couldn't refresh Chase (Plaid: ITEM_LOGIN_REQUIRED), Schwab (Plaid: HTTP 502) — everything else synced."
 // Provider failures list each institution with its short reason code (built in
 // refreshErrors.ts from allow-listed pieces); any other failure is reduced to just
 // the source name, since an arbitrary error may carry request headers or tokens and
@@ -105,61 +86,28 @@ export function describeRefreshFailures(failed: Map<string, unknown>): string {
   return `Couldn't refresh ${shown}${more} — everything else synced.`;
 }
 
-// Full refresh: pull latest from all account sources + Zillow, then snapshot.
-// Forces a fresh SimpleFIN fetch (bypasses the daily cache) since this is the
-// explicit "Sync now" action — newly-linked accounts should appear at once.
-// Records the real-estate refresh time too, so the Setup "last synced" readout
-// reflects that this path also pulled property values.
+// Full refresh: pull latest from Plaid, then snapshot. The Plaid refresh
+// always bypasses the daily read cache, since this is the explicit "Sync now"
+// action — newly-linked accounts should appear at once.
 // This one is user-initiated, so it still reports failure after snapshotting —
 // "Sync now" must not claim success when a provider didn't sync.
 export async function refreshAndSnapshot(): Promise<void> {
   const failed = await settleRefreshes([
-    { label: 'SimpleFIN', run: () => refreshAllAccounts(true) },
     { label: 'Plaid', run: () => refreshAllPlaid() },
-    { label: 'real estate', run: () => refreshAllProperties() },
   ]);
-  // Only stamp the real-estate clock on an actual refresh — stamping it after a
-  // failure would suppress the startup catch-up for another 15 days.
-  if (!failed.has('real estate')) setMeta(LAST_RE_REFRESH, new Date().toISOString());
   takeSnapshot();
   if (failed.size) throw new RefreshFailedError(describeRefreshFailures(failed), [...failed.keys()]);
 }
 
-// Accounts only (SimpleFIN + Plaid), then snapshot. Leaves real estate untouched.
-// Forces a fresh SimpleFIN fetch: this is the scheduled daily refresh, and the
-// 23h read-cache is also warmed by ordinary page views — so without force a
-// casual visit before 6 AM would make the cron a no-op and new transactions /
-// balances wouldn't sync until the cache happened to expire.
+// The scheduled daily refresh: Plaid, then snapshot. The Plaid refresh
+// bypasses the 23h read cache, which ordinary page views also warm — so a
+// cached read would make the cron a no-op until the cache happened to expire.
 // Unattended: a failing provider is logged, and the snapshot still happens.
 export async function refreshAccountsAndSnapshot(): Promise<void> {
   await settleRefreshes([
-    { label: 'SimpleFIN', run: () => refreshAllAccounts(true) },
     { label: 'Plaid', run: () => refreshAllPlaid() },
   ]);
   takeSnapshot();
-}
-
-// Real estate only (Zillow), then snapshot. Leaves accounts untouched.
-export async function refreshRealEstateAndSnapshot(): Promise<void> {
-  const failed = await settleRefreshes([
-    { label: 'real estate', run: () => refreshAllProperties() },
-  ]);
-  if (!failed.size) setMeta(LAST_RE_REFRESH, new Date().toISOString());
-  takeSnapshot();
-}
-
-// On startup: if real estate hasn't been refreshed in >15 days, catch up now.
-// Covers the case where the server was asleep/stopped on the 1st or 15th.
-export async function catchUpRealEstate(): Promise<void> {
-  const last = getMeta(LAST_RE_REFRESH);
-  const daysSince = last
-    ? (Date.now() - new Date(last).getTime()) / (1000 * 60 * 60 * 24)
-    : Infinity;
-
-  if (daysSince > 15) {
-    console.log(`[startup] Real estate last refreshed ${last ?? 'never'} — catching up...`);
-    await refreshRealEstateAndSnapshot();
-  }
 }
 
 export function getNetWorthHistory(days = 90): Snapshot[] {
@@ -168,7 +116,7 @@ export function getNetWorthHistory(days = 90): Snapshot[] {
   // backfill-artifact check below sees the oldest point of the window first.
   const rows = db.prepare(`
     SELECT * FROM (
-      SELECT date, accounts_total, real_estate_total, net_worth
+      SELECT date, accounts_total, net_worth
       FROM net_worth_snapshots
       ORDER BY date DESC
       LIMIT ?
@@ -204,20 +152,12 @@ export function getCurrentBreakdown(): Breakdown {
     SELECT id, name, category, value, interest_rate, updated_at FROM manual_assets ORDER BY name
   `).all() as ManualAsset[];
 
-  const properties = db.prepare(`
-    SELECT id, address, zestimate, mortgage_balance,
-           mortgage_principal, mortgage_rate, mortgage_start, mortgage_term_years,
-           property_tax_annual, insurance_annual, hoa_annual, rental_income_annual, updated_at
-    FROM properties ORDER BY address
-  `).all() as Property[];
-
   // SQLite has no boolean type; convert its 0/1 here so the wire format (and
   // the shared Account type) carries real booleans instead of leaking the
   // storage convention to every consumer.
   return {
     accounts: accounts.map(a => ({ ...a, renamed: !!a.renamed, hidden: !!a.hidden })),
     manualAssets,
-    properties,
   };
 }
 

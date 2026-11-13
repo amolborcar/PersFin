@@ -1,13 +1,13 @@
 import './env.js'; // loads the keys file (honors KEVFIN_ENV_PATH) before anything reads env
 import express from 'express';
 import cron from 'node-cron';
+import os from 'os';
 import { mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
-import simplefinRoutes from './routes/simplefin.js';
+import accountRoutes from './routes/accounts.js';
 import plaidRoutes from './routes/plaid.js';
-import propertyRoutes from './routes/properties.js';
 import assetRoutes from './routes/assets.js';
 import allocationRoutes from './routes/allocation.js';
 import budgetRoutes from './routes/budget.js';
@@ -23,15 +23,11 @@ import exportRoutes from './routes/export.js';
 import dataRoutes from './routes/data.js';
 import testsRoutes from './routes/tests.js';
 import reportRoutes from './routes/report.js';
-import { isDailySnapshotEnabled } from './services/data.js';
-import {
-  refreshAccountsAndSnapshot,
-  refreshRealEstateAndSnapshot,
-  catchUpRealEstate,
-  takeSnapshot,
-} from './services/netWorth.js';
+import jobRoutes from './routes/jobs.js';
 import { catchUpHistory } from './services/historyCatchUp.js';
+import { runJob } from './services/jobs.js';
 import { localOriginGuard } from './localOrigin.js';
+import { listenModeFromEnv, listenHosts, LOOPBACK_HOSTS } from './util/listen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -42,9 +38,8 @@ app.use('/api', localOriginGuard); // there is no login — see localOrigin.ts
 
 app.use(express.json({ limit: '15mb' })); // allow large CSV transaction uploads
 
-app.use('/api/simplefin', simplefinRoutes);
+app.use('/api/accounts', accountRoutes);
 app.use('/api/plaid', plaidRoutes);
-app.use('/api/properties', propertyRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/allocation', allocationRoutes);
 app.use('/api/budget/rules', rulesRoutes); // before /api/budget so it is matched first
@@ -60,6 +55,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/data', dataRoutes);
 app.use('/api/tests', testsRoutes);
 app.use('/api/report', reportRoutes);
+app.use('/api/jobs', jobRoutes);
 
 // In production the built client is served from the same port.
 // In dev, Vite runs on its own port and proxies /api here instead.
@@ -74,41 +70,60 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Accounts/brokerages: refresh daily at 6 AM
-cron.schedule('0 6 * * *', async () => {
-  console.log('[cron] Daily accounts refresh...');
-  await refreshAccountsAndSnapshot();
-  // Repair history here too, not just at startup: an always-on server may go
-  // months without a restart, and this is the hook that would notice a gap left
-  // by downtime or a version stamp left by an upgrade.
-  await catchUpHistory().catch(err => console.error('[cron] history catch-up failed:', err));
-});
-
-// Real estate: refresh twice a month — 1st and 15th at 6:30 AM
-cron.schedule('30 6 1,15 * *', async () => {
-  console.log('[cron] Twice-monthly real estate refresh...');
-  await refreshRealEstateAndSnapshot();
-});
-
-// Daily midnight snapshot — records current DB state so net-worth history
-// stays continuous even on days when no account refresh runs. The toggle lives
-// in the DB (Setup → Sync) so it takes effect without a restart; DAILY_SNAPSHOT
-// in the env seeds the default before it's ever toggled.
-cron.schedule('0 0 * * *', () => {
-  if (!isDailySnapshotEnabled()) return;
-  console.log('[cron] Daily midnight net-worth snapshot...');
-  takeSnapshot();
-});
+// Scheduled jobs (see services/jobs.ts). Under the macOS always-on setup,
+// launchd agents trigger them via POST /api/jobs/<name> (KEVFIN_SCHEDULER=launchd)
+// and run a missed job once the Mac wakes; otherwise (dev) node-cron does it
+// in-process. Either way runJob makes each job run at most once per local day.
+if (process.env.KEVFIN_SCHEDULER !== 'launchd') {
+  // Accounts: refresh daily at 6 AM, then repair history.
+  cron.schedule('0 6 * * *', () => {
+    runJob('daily-sync').catch(err => console.error('[cron] daily-sync failed:', err));
+  });
+  // Daily midnight snapshot (skipped while disabled in Setup → Sync; DAILY_SNAPSHOT
+  // in the env seeds the default before it's ever toggled).
+  cron.schedule('0 0 * * *', () => {
+    runJob('snapshot').catch(err => console.error('[cron] snapshot failed:', err));
+  });
+}
 
 // A stray rejected promise (e.g. a fire-and-forget provider call) should be logged,
 // not take the whole server down — Node's default is to exit on unhandled rejections.
 process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
-const PORT = process.env.PORT ?? 3001;
-app.listen(PORT, () => {
+const PORT = Number(process.env.PORT ?? 3001);
+
+function onListening() {
   console.log(`KevFin server running on http://localhost:${PORT}`);
-  // Catch up on anything a scheduled run missed while offline. Both are
-  // fire-and-forget so a slow or failing provider can't hold up serving.
-  catchUpRealEstate().catch(err => console.error('[startup] catch-up failed:', err));
+  // Catch up on history a scheduled run missed while offline. Fire-and-forget
+  // so a slow or failing provider can't hold up serving.
   catchUpHistory().catch(err => console.error('[startup] history catch-up failed:', err));
-});
+}
+
+const listenMode = listenModeFromEnv(process.env.KEVFIN_LISTEN);
+if (listenMode === 'all') {
+  app.listen(PORT, onListening);
+} else {
+  // Loopback + Tailscale only (see util/listen.ts). Tailscale can come up after
+  // the server (e.g. at login), so new Tailscale addresses are bound as they
+  // appear. If 127.0.0.1 can't be bound (port taken), exit so launchd retries.
+  const bound = new Set<string>();
+  const bindNew = () => {
+    for (const host of listenHosts(listenMode, os.networkInterfaces()) ?? []) {
+      if (bound.has(host)) continue;
+      bound.add(host);
+      const srv = app.listen(PORT, host, () => {
+        console.log(`[listen] ${host}:${PORT}`);
+        if (host === '127.0.0.1') onListening();
+      });
+      srv.on('error', (err: NodeJS.ErrnoException) => {
+        console.error(`[listen] could not bind ${host}:${PORT} (${err.code ?? err.message})`);
+        if (host === '127.0.0.1') process.exit(1);
+        // A Tailscale address that went away is retried on a later check;
+        // a missing IPv6 loopback is not worth retrying.
+        if (!LOOPBACK_HOSTS.includes(host)) bound.delete(host);
+      });
+    }
+  };
+  bindNew();
+  setInterval(bindNew, 60_000).unref();
+}

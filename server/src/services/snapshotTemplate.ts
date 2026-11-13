@@ -39,7 +39,7 @@ export function renderSnapshotHtml(payload: EncryptedPayload, info: ViewerInfo):
   h1{font-size:28px;font-weight:700;letter-spacing:-.5px}
   h2{font-size:16px;font-weight:600;margin-bottom:14px}
   .muted{color:var(--muted)}
-  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+  .kpis{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:24px}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px}
   .kpi .label{color:var(--muted);font-size:13px;margin-bottom:8px}
   .kpi .val{font-size:26px;font-weight:700}
@@ -141,21 +141,6 @@ export function renderSnapshotHtml(payload: EncryptedPayload, info: ViewerInfo):
     return html;
   }
 
-  function realEstateCard(props){
-    if(!props||!props.length) return "";
-    var html='<div class="card"><h2>Real Estate</h2>';
-    props.forEach(function(p){
-      var eq=(p.zestimate||0)-(p.mortgage_balance||0);
-      html+='<div style="padding:8px 0;border-bottom:1px solid var(--border)">'
-        +'<div style="font-weight:600;margin-bottom:4px">'+esc(p.address)+'</div>'
-        +'<div class="row"><span class="muted">Value</span><span class="pos">'+money(p.zestimate)+'</span></div>'
-        +'<div class="row"><span class="muted">Mortgage</span><span class="neg">'+money(p.mortgage_balance)+'</span></div>'
-        +'<div class="row"><span class="muted">Equity</span><span class="'+(eq>=0?"pos":"neg")+'">'+money(eq)+'</span></div></div>';
-    });
-    html+='</div>';
-    return html;
-  }
-
   function manualAssetsCard(assets){
     if(!assets||!assets.length) return "";
     var html='<div class="card"><h2>Manual Assets</h2>';
@@ -222,14 +207,12 @@ export function renderSnapshotHtml(payload: EncryptedPayload, info: ViewerInfo):
 
     html+='<div class="kpis">'
       +'<div class="kpi hero"><div class="label">Net Worth</div><div class="val">'+money(latest?latest.net_worth:null)+'</div></div>'
-      +'<div class="kpi"><div class="label">Accounts</div><div class="val" style="color:var(--amber)">'+money(latest?latest.accounts_total:null)+'</div></div>'
-      +'<div class="kpi"><div class="label">Real Estate</div><div class="val" style="color:var(--green)">'+money(latest?latest.real_estate_total:null)+'</div></div>'
       +'</div>';
 
     html+='<div class="card"><h2>Net Worth History</h2>'+(chart(hist)||'<p class="muted">Not enough history to chart.</p>')+'</div>';
 
     html+='<div class="two"><div>'+accountsCard(bd)+'</div><div>'
-      +realEstateCard(bd.properties)+manualAssetsCard(bd.manualAssets)+'</div></div>';
+      +manualAssetsCard(bd.manualAssets)+'</div></div>';
 
     html+=allocationCard(data.allocation)+performanceCard(data.performance)+budgetCard(data.budget);
 

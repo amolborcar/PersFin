@@ -17,8 +17,7 @@ interface StockExposure { symbol: string; name: string; value: number; pct: numb
 interface AccountHolding { name: string; value: number; costBasis?: number | null }
 type CostBasisSource = 'manual' | 'imported' | 'reported' | 'estimated';
 interface HoldingRow { symbol: string; name: string; value: number; costBasis: number | null; costBasisCoveredValue: number; costBasisComplete: boolean; costBasisSource: CostBasisSource | null; pct: number; assetClass: string; overridden: boolean; accounts: AccountHolding[] }
-interface RealEstateLot { id: number; address: string; equity: number; excluded: boolean }
-interface AllocationData { total: number; holdings: HoldingRow[]; bySector: Slice[]; byStock: StockExposure[]; byCountry: Slice[]; byAssetClass: Slice[]; assetClasses: string[]; realEstate: RealEstateLot[]; lookThrough?: { issue: 'no-contact' | 'blocked'; detail: string } }
+interface AllocationData { total: number; holdings: HoldingRow[]; bySector: Slice[]; byStock: StockExposure[]; byCountry: Slice[]; byAssetClass: Slice[]; assetClasses: string[]; lookThrough?: { issue: 'no-contact' | 'blocked'; detail: string } }
 
 const PALETTE = ['#6c8fff', '#4ade80', '#fbbf24', '#f472b6', '#38bdf8', '#a78bfa', '#fb923c', '#34d399', '#f87171', '#c084fc', '#2dd4bf', '#facc15'];
 
@@ -489,17 +488,6 @@ export default function Allocation({ onNavigate, privacy, onTogglePrivacy }: {
   const money: Money = n => (privacy ? '••••••' : fmtMoney(n));
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Include/exclude a home (e.g. primary residence) from the allocation. The
-  // flag is stored per-property server-side, so it persists across browsers.
-  async function toggleHome(id: number, excluded: boolean) {
-    try {
-      await putJson('/api/allocation/property-exclusion', { id, excluded });
-      setActionError(null);
-      refetch();
-    } catch (e) {
-      setActionError(`Couldn't update the home: ${(e as Error).message}`);
-    }
-  }
   const [classifyId, setClassifyId] = useState<string | null>(null);
   const [editBasisId, setEditBasisId] = useState<string | null>(null);
   // Asset class selected in the allocation chart → filters the Positions card.
@@ -550,8 +538,6 @@ export default function Allocation({ onNavigate, privacy, onTogglePrivacy }: {
   const holdingsById = new Map((data?.holdings ?? []).map(h => [idOf(h.symbol, h.name), h]));
   const classifyHolding = classifyId ? holdingsById.get(classifyId) : undefined;
   const editBasisHolding = editBasisId ? holdingsById.get(editBasisId) : undefined;
-  // Real-estate rows are non-editable for cost basis (their value is equity).
-  const realEstateNames = new Set((data?.realEstate ?? []).map(r => r.address));
 
   // Position filters: by selected asset class (from the allocation chart) and
   // by the search box.
@@ -567,7 +553,7 @@ export default function Allocation({ onNavigate, privacy, onTogglePrivacy }: {
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px' }}>Investment Allocation</h1>
         <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 4 }}>
-          {data ? `${money(data.total)} across investments, real estate & other assets · click any bar to see what it's made of`
+          {data ? `${money(data.total)} across investments & other assets · click any bar to see what it's made of`
             : error ? 'Allocation unavailable.' : 'Analyzing holdings…'}
         </p>
       </div>
@@ -584,20 +570,20 @@ export default function Allocation({ onNavigate, privacy, onTogglePrivacy }: {
         </p>
       )}
       {actionError && <p role="alert" style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{actionError}</p>}
-      {data && data.holdings.length === 0 && data.realEstate.length === 0 && (
+      {data && data.holdings.length === 0 && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, color: 'var(--muted)', fontSize: 14 }}>
           Connect a brokerage account (Dashboard → Manage connections) to see your allocation.
         </div>
       )}
 
-      {data && (data.holdings.length > 0 || data.realEstate.length > 0) && (() => {
+      {data && data.holdings.length > 0 && (() => {
         const sectionNodes: Record<string, React.ReactNode> = {
           country: (
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, height: '100%', boxSizing: 'border-box' }}>
               <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Country / Region Exposure</h2>
               <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 16 }}>
                 Estimated from each fund's holdings by the issuer's country (ISIN prefix when unreported). Hover the map; click a row for contributing funds.
-                {' '}% of invested assets (excludes real estate and other). Fund holdings as of each fund's latest SEC filing.
+                {' '}% of invested assets (excludes other assets). Fund holdings as of each fund's latest SEC filing.
                 {' '}Buckets with no country data (e.g. International / Other, bonds) are listed but can't be drawn.
               </p>
               {data.lookThrough && <SecLookThroughNotice issue={data.lookThrough.issue} detail={data.lookThrough.detail} onSaved={() => refetch()} />}
@@ -619,38 +605,17 @@ export default function Allocation({ onNavigate, privacy, onTogglePrivacy }: {
               </div>
               <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 12, lineHeight: 1.45 }}>
                 {riskProfile
-                  ? <>Solid bar = your current mix · dashed bar = <strong style={{ color: 'var(--text)' }}>{riskProfile.name}</strong> model target. Investments, real estate &amp; other assets. Click a class to see its holdings.</>
-                  : 'Investments, real estate & other assets · % of total. Take the risk questionnaire to compare against a recommended model portfolio.'}
+                  ? <>Solid bar = your current mix · dashed bar = <strong style={{ color: 'var(--text)' }}>{riskProfile.name}</strong> model target. Investments &amp; other assets. Click a class to see its holdings.</>
+                  : 'Investments & other assets · % of total. Take the risk questionnaire to compare against a recommended model portfolio.'}
               </p>
-              {data.realEstate.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>Real estate:</span>
-                  {data.realEstate.map(h => {
-                    const on = !h.excluded;
-                    return (
-                      <button key={h.id}
-                        onClick={() => toggleHome(h.id, on)}
-                        title={on ? 'Click to exclude this home from the allocation' : 'Click to include this home'}
-                        style={{
-                          fontSize: 11, padding: '3px 9px', borderRadius: 12, cursor: 'pointer',
-                          border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
-                          background: on ? 'var(--accent-dim)' : 'transparent',
-                          color: on ? 'var(--text)' : 'var(--muted)', opacity: on ? 1 : 0.6,
-                        }}>
-                        {on ? '✓ ' : '+ '}{h.address.split(',')[0]} · {money(h.equity)}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
               {assetTiles.length > 0
                 ? <AssetAllocationChart data={assetTiles} model={riskProfile?.model ?? null} selectedKey={selectedClass}
                     onSelectClass={key => { setSelectedClass(key); if (key) setPosCollapsed(false); }} />
                 : <p style={{ color: 'var(--muted)', fontSize: 13 }}>No holdings to classify.</p>}
             </div>
           ),
-          sector: <ExpandableBars title="Sector Exposure" subtitle="Look-through across all funds · % of invested assets (excludes real estate and other). Click a sector for contributors." rows={sectorRows} money={money} />,
-          stock: <ExpandableBars title="Stock Exposure" subtitle="Into each fund's holdings, aggregated · % of invested assets (excludes real estate and other) · fund holdings as of each fund's latest SEC filing. Hover a stock for accounts." rows={stockRows} money={money} />,
+          sector: <ExpandableBars title="Sector Exposure" subtitle="Look-through across all funds · % of invested assets (excludes other assets). Click a sector for contributors." rows={sectorRows} money={money} />,
+          stock: <ExpandableBars title="Stock Exposure" subtitle="Into each fund's holdings, aggregated · % of invested assets (excludes other assets) · fund holdings as of each fund's latest SEC filing. Hover a stock for accounts." rows={stockRows} money={money} />,
           positions: (() => {
             const shown = showAllPos || posQuery || selectedClass ? filteredHoldings : filteredHoldings.slice(0, POS_LIMIT);
             // Portfolio unrealized gain, over the positions where a cost basis was
@@ -739,7 +704,7 @@ export default function Allocation({ onNavigate, privacy, onTogglePrivacy }: {
                       <span /><span>Symbol</span><span>Name</span><span>Class</span><span style={{ textAlign: 'right' }}>Cost</span><span style={{ textAlign: 'right' }}>Value</span><span style={{ textAlign: 'right' }}>Gain/Loss</span><span style={{ textAlign: 'right' }}>% of total</span>
                     </div>
                     {shown.map((h, i) => (
-                      <PositionRow key={idOf(h.symbol, h.name)} h={h} money={money} editable={!!h.symbol || !realEstateNames.has(h.name)} onClassify={setClassifyId} onEditBasis={setEditBasisId} />
+                      <PositionRow key={idOf(h.symbol, h.name)} h={h} money={money} editable onClassify={setClassifyId} onEditBasis={setEditBasisId} />
                     ))}
                     {shown.length === 0 && (
                       <p style={{ color: 'var(--muted)', fontSize: 13, padding: '12px 0' }}>

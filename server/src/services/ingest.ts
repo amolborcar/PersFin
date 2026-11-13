@@ -17,8 +17,6 @@ export type Proposal =
       fields: { name: string; category: Category; value: number } }
   | { table: 'imported_txns'; summary: string; confidence: number;
       fields: { date: string; amount: number; payee: string; merchant: string; account: string; category: string } }
-  | { table: 'properties'; summary: string; confidence: number;
-      fields: { address: string; value: number | null; mortgage_balance: number } }
   | { table: 'accounts'; summary: string; confidence: number;
       fields: { org_name: string; name: string; category: Category; balance: number } }
   // A security's total cost basis from a 1099-B / brokerage positions statement.
@@ -65,7 +63,7 @@ export function notLoggedInError(bin: string): IngestError {
   );
 }
 
-const TABLES = new Set(['manual_assets', 'imported_txns', 'properties', 'accounts', 'cost_basis', 'forecast']);
+const TABLES = new Set(['manual_assets', 'imported_txns', 'accounts', 'cost_basis', 'forecast']);
 const MAX_BYTES = 12 * 1024 * 1024; // decoded; stays under express' 15mb JSON cap once base64-inflated
 
 // Only formats Claude Code's Read tool can actually interpret. Anything else
@@ -76,7 +74,7 @@ const EXTRACT_SYSTEM =
   'You are a financial-document extraction engine for KevFin, a personal ' +
   'net-worth tracker and retirement forecaster. You read ONE uploaded document ' +
   'and propose entries that capture its financially-relevant contents — account ' +
-  'balances, transactions, property, or (for a tax return) retirement-planning ' +
+  'balances, transactions, or (for a tax return) retirement-planning ' +
   'inputs. The document belongs to the user (their own finances). Output ONLY a ' +
   'single JSON object — no prose, no markdown code fences.';
 
@@ -86,15 +84,13 @@ function extractPrompt(fileName: string): string {
 
 Return a JSON object exactly matching this TypeScript type:
 {
-  "docType": string,   // e.g. "brokerage statement", "receipt", "pay stub", "mortgage statement"
+  "docType": string,   // e.g. "brokerage statement", "receipt", "pay stub", "loan statement"
   "notes": string,     // one short caveat, or "" if none
   "proposals": Array<
     | { "table": "manual_assets", "summary": string, "confidence": number,
         "fields": { "name": string, "category": "banking"|"brokerage"|"credit"|"other", "value": number } }
     | { "table": "imported_txns", "summary": string, "confidence": number,
         "fields": { "date": "YYYY-MM-DD", "amount": number, "payee": string, "merchant": string, "account": string, "category": string } }
-    | { "table": "properties", "summary": string, "confidence": number,
-        "fields": { "address": string, "value": number|null, "mortgage_balance": number } }
     | { "table": "accounts", "summary": string, "confidence": number,
         "fields": { "org_name": string, "name": string, "category": "banking"|"brokerage"|"credit"|"other", "balance": number } }
     | { "table": "cost_basis", "summary": string, "confidence": number,
@@ -108,7 +104,7 @@ Return a JSON object exactly matching this TypeScript type:
 Pick the table that best fits the document:
 - An end-of-period balance for an investment or bank account → "manual_assets" (preferred for a single balance) or "accounts".
 - Individual purchases/payments (e.g. a receipt or a transaction list) → one "imported_txns" entry per transaction.
-- A home value or mortgage statement → "properties".
+- A loan statement → one "accounts" entry with category "credit" and the amount owed as a NEGATIVE balance.
 - A tax return (Form 1040), a W-2, or a year-end tax summary → a SINGLE "forecast" entry capturing retirement-planning inputs (see below). Do not also emit transactions for it.
 - A 1099-B, a realized-gains report, or a brokerage POSITIONS/holdings statement that lists cost basis per security → one "cost_basis" entry per security. Use these for the per-security TOTAL cost basis; do NOT also emit "manual_assets"/"accounts" balances for the same securities.
 
@@ -281,10 +277,6 @@ function normalizeResult(raw: unknown): ExtractResult {
         table: 'imported_txns', summary, confidence,
         fields: { date, amount, payee, merchant: str(f.merchant) || payee, account: str(f.account) || 'Uploaded document', category: str(f.category) || 'Miscellaneous' },
       });
-    } else if (p.table === 'properties') {
-      const address = str(f.address);
-      if (!address) continue;
-      proposals.push({ table: 'properties', summary, confidence, fields: { address, value: num(f.value), mortgage_balance: num(f.mortgage_balance) ?? 0 } });
     } else if (p.table === 'accounts') {
       const balance = num(f.balance);
       const name = str(f.name);
@@ -330,8 +322,6 @@ export function commitProposals(rawProposals: unknown): CommitResult {
 
   const insertAsset = db.prepare('INSERT INTO manual_assets (name, category, value) VALUES (?, ?, ?)');
   const insertTxn = db.prepare('INSERT INTO imported_txns (id, date, amount, payee, merchant, account, category) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  const insertProperty = db.prepare(`INSERT INTO properties (address, zestimate, mortgage_balance) VALUES (?, ?, ?)
-    ON CONFLICT(address) DO UPDATE SET zestimate = COALESCE(excluded.zestimate, properties.zestimate), mortgage_balance = excluded.mortgage_balance, updated_at = datetime('now')`);
   const insertAccount = db.prepare(`INSERT INTO accounts (id, source, org_name, name, currency, balance, category, balance_date)
     VALUES (?, 'manual', ?, ?, 'USD', ?, ?, date('now'))`);
   const insertBasis = db.prepare(`INSERT INTO imported_cost_basis (symbol, cost_basis) VALUES (?, ?)
@@ -347,8 +337,6 @@ export function commitProposals(rawProposals: unknown): CommitResult {
         insertAsset.run(p.fields.name, p.fields.category, p.fields.value);
       } else if (p.table === 'imported_txns') {
         insertTxn.run(`doc-${randomUUID()}`, p.fields.date, p.fields.amount, p.fields.payee, p.fields.merchant, p.fields.account, p.fields.category);
-      } else if (p.table === 'properties') {
-        insertProperty.run(p.fields.address, p.fields.value, p.fields.mortgage_balance);
       } else if (p.table === 'cost_basis') {
         // Key by symbol (matches a tickered holding); fall back to name.
         insertBasis.run(p.fields.symbol || p.fields.name, p.fields.costBasis);

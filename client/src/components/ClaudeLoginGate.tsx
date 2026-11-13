@@ -114,9 +114,8 @@ export function ClaudeLoginPrompt({ command, noBinary, onRecheck, compact }: {
   const [tokenMsg, setTokenMsg] = useState<string | null>(null);
   const recheck = async () => { setRechecking(true); try { await onRecheck(); } finally { setRechecking(false); } };
 
-  // Cross-platform sign-in: save a setup token (from `claude setup-token`) so the
-  // assistant runs on the user's own subscription — the path that works on
-  // Windows, where the Terminal helper doesn't.
+  // Alternative sign-in: save a setup token (from `claude setup-token`) so the
+  // assistant runs on the user's own subscription without the Terminal helper.
   async function saveToken() {
     const t = token.trim();
     if (!t) return;

@@ -26,8 +26,8 @@ interface SystemStatus {
   dbPath: string;
   version: string;
   dailySnapshotEnabled: boolean;
-  lastSync: { accounts: string | null; realEstate: string | null; snapshot: string | null };
-  counts: { accounts: number; properties: number; manualAssets: number; snapshots: number; importedTxns: number; feedTxns?: number; connections: number };
+  lastSync: { accounts: string | null; snapshot: string | null };
+  counts: { accounts: number; manualAssets: number; snapshots: number; importedTxns: number; feedTxns?: number; connections: number };
 }
 
 // Epoch ms for a stored timestamp, or NaN. updated_at is SQLite datetime('now'):
@@ -168,6 +168,8 @@ const IconFile = () => <Icon><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a
 const IconLock = () => <Icon><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></Icon>;
 const IconFlask = () => <Icon><path d="M9 3h6" /><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9V3" /><path d="M7.5 15h9" /></Icon>;
 const IconMail = () => <Icon><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></Icon>;
+const IconPower = () => <Icon><path d="M12 2v10" /><path d="M18.4 6.6a9 9 0 1 1-12.8 0" /></Icon>;
+const IconMoon = () => <Icon><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" /></Icon>;
 const IconTrash = () => <Icon><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></Icon>;
 
 function Chevron({ open }: { open?: boolean }) {
@@ -266,7 +268,7 @@ function ThemeRow() {
 
 // ---- Sync --------------------------------------------------------------------
 // "Sync now" forces a fresh pull of everything external — linked accounts
-// (SimpleFIN + Plaid) and real-estate values (Zillow) — then records a net-worth
+// (Plaid) — then records a net-worth
 // point. The daily midnight history point runs automatically, so no toggle.
 function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null; refetch: () => void; onChanged: () => void }) {
   const [syncing, setSyncing] = useState(false);
@@ -286,8 +288,8 @@ function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null;
     }
   }
 
-  // Freshness keys off whichever of accounts / real estate synced most recently.
-  const stamps = [status?.lastSync.accounts, status?.lastSync.realEstate]
+  // Freshness keys off when the accounts last synced.
+  const stamps = [status?.lastSync.accounts]
     .filter((s): s is string => !!s).map(parseTs).filter(t => !isNaN(t));
   const newest = stamps.length ? Math.max(...stamps) : null;
   const fresh = newest != null && Date.now() - newest < 86400_000;
@@ -297,16 +299,78 @@ function SyncRow({ status, refetch, onChanged }: { status?: SystemStatus | null;
     <Row
       icon={<IconRefresh />}
       title="Sync now"
-      tip="Pull the latest from all linked accounts and real estate, then record a net-worth point"
+      tip="Pull the latest from all linked accounts, then record a net-worth point"
       onClick={syncNow}
       disabled={syncing}
       subtitle={error
         ? <span style={{ color: 'var(--red)' }}>{error}</span>
         : syncing ? 'Syncing…'
         : !status ? 'Checking…'
-        : `Accounts and real estate · last synced ${relTime(lastIso)}`}
+        : `Accounts · last synced ${relTime(lastIso)}`}
       right={syncing || !status ? <Spinner />
         : <span style={{ color: fresh ? 'var(--green)' : 'var(--muted)' }}>{fresh ? 'Up to date' : 'Stale'}</span>}
+    />
+  );
+}
+
+// ---- Background service (desktop app on macOS) --------------------------------
+// launchd runs the server at login and keeps it running when the app is closed,
+// and runs the scheduled jobs (daily sync, snapshot). Only shown in the desktop
+// app on macOS. Switching reloads the window onto the server that now runs.
+function BackgroundRow() {
+  const bridge = typeof window !== 'undefined' ? window.kevfinDesktop : undefined;
+  const [state, setState] = useState<{ supported: boolean; enabled: boolean; logDir: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    bridge?.getBackground?.().then(setState).catch(() => setState(null));
+  }, [bridge]);
+
+  if (!bridge?.setBackground || !state?.supported) return null;
+
+  async function toggle() {
+    if (!state || !bridge?.setBackground) return;
+    setBusy(true); setError(null);
+    const r = await bridge.setBackground(!state.enabled).catch(e => ({ ok: false, error: String(e) }));
+    setBusy(false);
+    // On success the window reloads by itself; on failure show why.
+    if (!r.ok) setError(r.error ?? 'Could not change the background service.');
+  }
+
+  return (
+    <Row
+      icon={<IconPower />}
+      title="Keep running in the background"
+      tip={`Runs KevFin at login and keeps it running when this window is closed, so the daily sync and scheduled reports happen on time. Logs: ${state.logDir}`}
+      onClick={toggle}
+      disabled={busy}
+      subtitle={error
+        ? <span style={{ color: 'var(--red)' }}>{error}</span>
+        : busy ? 'Switching…'
+        : state.enabled ? 'On · starts at login, daily sync at 6:00'
+        : 'Off · KevFin runs only while this app is open'}
+      right={busy ? <Spinner /> : <span style={{ color: state.enabled ? 'var(--green)' : 'var(--muted)' }}>{state.enabled ? 'On' : 'Off'}</span>}
+    />
+  );
+}
+
+// ---- Sleep check (macOS) ----------------------------------------------------
+// Scheduled jobs only run while the Mac is awake (a missed one runs on wake), so
+// warn when system sleep is on. Read-only: KevFin never changes power settings.
+function SleepRow() {
+  const { data } = useApi<{ supported: boolean; sleepMinutes: number | null }>('/api/meta/power');
+  if (!data?.supported || data.sleepMinutes == null || data.sleepMinutes === 0) return null;
+  return (
+    <Row
+      icon={<IconMoon />}
+      title="This Mac goes to sleep"
+      tip="System Settings → Energy (or Battery → Options) → turn on “Prevent automatic sleeping when the display is off”."
+      subtitle={<span style={{ color: 'var(--amber)' }}>
+        Sleeps after {data.sleepMinutes} min idle, so scheduled syncs and reports wait until it wakes.
+        Turn on “Prevent automatic sleeping when the display is off” in System Settings → Energy.
+      </span>}
+      right={<span />}
     />
   );
 }
@@ -501,7 +565,7 @@ function TestsRow() {
       ) : (
         <>
           <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 10px' }}>
-            Validation tests for the money math — mortgage amortization, tax bucketing, and
+            Validation tests for the money math — budgeting, tax bucketing, and
             spending categorization — checked against known-correct values so the numbers stay trustworthy.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -655,7 +719,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
   }
 
   async function eraseAll() {
-    if (!confirm('Erase ALL data — accounts, properties, assets, history, transactions? This cannot be undone (download a backup first).')) return;
+    if (!confirm('Erase ALL data — accounts, assets, history, transactions? This cannot be undone (download a backup first).')) return;
     setBusy('erase'); setMsg(null);
     try {
       const res = await fetch('/api/data/reset', {
@@ -684,6 +748,8 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
 
       <Group label="Sync">
         <SyncRow status={status} refetch={refetch} onChanged={onChanged} />
+        <BackgroundRow />
+        <SleepRow />
         <SecContactRow onChanged={onChanged} />
       </Group>
 
@@ -727,7 +793,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
       <div style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
         <div>
           KevFin{status && ` v${status.version}`}
-          {c && ` · ${plural(c.accounts, 'account')} · ${plural(c.properties, 'property', 'properties')} · ${plural(c.importedTxns + (c.feedTxns ?? 0), 'transaction')}`}
+          {c && ` · ${plural(c.accounts, 'account')} · ${plural(c.importedTxns + (c.feedTxns ?? 0), 'transaction')}`}
         </div>
         <div>
           Free and fully local ·{' '}

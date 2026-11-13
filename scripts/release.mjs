@@ -30,7 +30,7 @@ import { fileURLToPath } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // desktop/package.json is included so electron-builder stamps the installer
-// filename/metadata with the release version (otherwise .dmg/.exe carry a stale one).
+// filename/metadata with the release version (otherwise the .dmg carries a stale one).
 const PKGS = ['package.json', 'server/package.json', 'client/package.json', 'desktop/package.json'].map(p => path.join(root, p));
 
 const git = (cmd) => execSync(`git ${cmd}`, { cwd: root }).toString().trim();
@@ -133,10 +133,8 @@ if (noGithubRelease) {
 } else {
   console.log('Creating GitHub Release ...');
   run(`gh release create ${tag} --title "${tag}" --generate-notes`);
-  // Append a stable "how to install" footer so every Release page features all
-  // distribution methods — desktop installers + the Docker image — beside the
-  // auto-generated changelog. `next` (no leading v) is the published image tag:
-  // metadata-action tags the image `1.2.3`, not `v1.2.3`.
+  // Append a stable "how to install" footer to every Release page, beside the
+  // auto-generated changelog. macOS is the only platform.
   const installFooter = [
     '', '---', '',
     '### 📦 How to install',
@@ -144,8 +142,6 @@ if (noGithubRelease) {
     '| Where you run it | Get it |',
     '| --- | --- |',
     '| **Mac** (Apple Silicon) | the `.dmg` below |',
-    '| **Windows** | the `.exe` below |',
-    `| **NAS / home server** (Docker) | \`docker pull ghcr.io/kxl3785/kevfin:${next}\` — [setup guide](https://github.com/kxl3785/KevFin#run-on-a-synology-nas-docker--paste-and-go) |`,
     '',
     'Runs entirely on your own machine — your financial data never leaves it.',
   ].join('\n');

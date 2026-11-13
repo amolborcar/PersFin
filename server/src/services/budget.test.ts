@@ -16,9 +16,12 @@ describe('autoCategory', () => {
       expect(autoCategory('Zelle', 'payment to John', -50)).toBe('Miscellaneous');
       expect(autoCategory('Venmo', 'transfer to roommate', -75)).not.toBe('Transfers');
     });
-    it('detects mortgage payments', () => {
-      expect(autoCategory('Rocket Mortgage', 'Payment', -2500)).toBe('Mortgage');
-      expect(autoCategory('PENNYMAC', 'home loan', -2200)).toBe('Mortgage');
+    it('detects rent payments', () => {
+      expect(autoCategory('AVALON APARTMENTS', 'Payment', -2400)).toBe('Rent');
+      expect(autoCategory('Bilt', 'RENT PAYMENT', -2100)).toBe('Rent');
+    });
+    it('has no mortgage category', () => {
+      expect(autoCategory('Rocket Mortgage', 'Payment', -2500)).not.toBe('Mortgage');
     });
   });
 
@@ -84,13 +87,13 @@ describe('isInternalTransfer (cash-flow spending exclusion)', () => {
   it('never excludes ordinary spending or income categories', () => {
     for (const tracked of [true, false]) {
       expect(isInternalTransfer('Groceries', tracked)).toBe(false);
-      expect(isInternalTransfer('Mortgage', tracked)).toBe(false);
+      expect(isInternalTransfer('Rent', tracked)).toBe(false);
       expect(isInternalTransfer('Paychecks', tracked)).toBe(false);
     }
   });
 });
 
-describe('isDuplicateTxn (import vs SimpleFIN dedup)', () => {
+describe('isDuplicateTxn (import vs bank-feed dedup)', () => {
   const DAY = 86400_000;
   const mk = (over: Partial<DupTxn>): DupTxn => ({ amount: -100, day: Date.parse('2026-06-15T00:00:00Z'), merchant: 'acme', acct: '1234', ...over });
 

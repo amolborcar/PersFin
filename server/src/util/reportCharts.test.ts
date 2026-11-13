@@ -4,19 +4,19 @@ import {
 } from './reportCharts.js';
 
 describe('attributeChange', () => {
-  it('reconciles exactly: start + saved + home + market = end (whole dollars)', () => {
-    const a = attributeChange({ start: 641210.4, end: 665963.6, saved: 9360.49, homeEquityDelta: 3913.5 });
-    expect(a.start + a.saved + a.home + a.market).toBe(a.end);
-    expect(a.market).toBe(a.end - a.start - a.saved - a.home);
+  it('reconciles exactly: start + saved + market = end (whole dollars)', () => {
+    const a = attributeChange({ start: 641210.4, end: 665963.6, saved: 9360.49 });
+    expect(a.start + a.saved + a.market).toBe(a.end);
+    expect(a.market).toBe(a.end - a.start - a.saved);
   });
   it('supports negative steps', () => {
-    const a = attributeChange({ start: 100000, end: 95000, saved: -2000, homeEquityDelta: -1500 });
+    const a = attributeChange({ start: 100000, end: 95000, saved: -2000 });
     expect(a.saved).toBe(-2000);
-    expect(a.market).toBe(-1500);
-    expect(a.start + a.saved + a.home + a.market).toBe(a.end);
+    expect(a.market).toBe(-3000);
+    expect(a.start + a.saved + a.market).toBe(a.end);
   });
-  it('puts everything in market & other when saved and home are zero', () => {
-    expect(attributeChange({ start: 10, end: 25, saved: 0, homeEquityDelta: 0 }).market).toBe(15);
+  it('puts everything in market & other when saved is zero', () => {
+    expect(attributeChange({ start: 10, end: 25, saved: 0 }).market).toBe(15);
   });
 });
 

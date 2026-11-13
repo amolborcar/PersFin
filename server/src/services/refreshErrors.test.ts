@@ -38,7 +38,7 @@ describe('safeLabel', () => {
   it('collapses whitespace/control characters, caps length, and falls back', () => {
     expect(safeLabel('  Chase\n\tBank ', 'x')).toBe('Chase Bank');
     expect(safeLabel('a'.repeat(100), 'x')).toHaveLength(40);
-    expect(safeLabel('', 'SimpleFIN connection 2')).toBe('SimpleFIN connection 2');
+    expect(safeLabel('', 'Plaid item')).toBe('Plaid item');
     expect(safeLabel(null, 'fallback')).toBe('fallback');
   });
 });
@@ -47,8 +47,6 @@ describe('ProviderRefreshError', () => {
   it('keeps the "N of M" summary message', () => {
     const e = new ProviderRefreshError('Plaid', 3, [{ label: 'Chase', reason: 'ITEM_LOGIN_REQUIRED' }]);
     expect(e.message).toBe('Plaid refresh failed for 1 of 3 item(s)');
-    expect(new ProviderRefreshError('SimpleFIN', 2, [{ label: 'a', reason: 'HTTP 403' }]).message)
-      .toBe('SimpleFIN refresh failed for 1 of 2 connection(s)');
   });
 });
 
@@ -89,36 +87,5 @@ describe('refreshAllPlaid', () => {
     expect(exposed).not.toContain('tok-bad');
     expect(exposed).not.toContain(TOKEN);
     expect(exposed).not.toContain(SECRET);
-  });
-});
-
-describe('refreshAllAccounts (SimpleFIN)', () => {
-  it('reports a failed live fetch by institution and HTTP status, never the access URL', async () => {
-    const db = getDb();
-    const accessUrl = 'https://user123:pass456@bridge.example.invalid/simplefin';
-    db.prepare('INSERT INTO simplefin_connections (id, access_url) VALUES (1, ?)').run(accessUrl);
-    db.prepare("INSERT INTO accounts (id, connection_id, org_name, name) VALUES ('sf1', 1, 'Schwab', 'Brokerage')").run();
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 403, json: async () => ({}) })));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { refreshAllAccounts } = await import('./simplefin.js');
-
-    const err = await refreshAllAccounts(true).then(() => null, e => e as ProviderRefreshError);
-    expect(err).toBeInstanceOf(ProviderRefreshError);
-    expect(err!.failures).toEqual([{ label: 'Schwab', reason: 'HTTP 403' }]);
-    const exposed = JSON.stringify({ m: err!.message, f: err!.failures });
-    expect(exposed).not.toContain('user123');
-    expect(exposed).not.toContain('pass456');
-    expect(exposed).not.toContain('bridge.example');
-    vi.unstubAllGlobals();
-  });
-
-  it('reduces a network failure to "network error" even if the error text has the URL', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed: https://user123:pass456@bridge.example.invalid'); }));
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { refreshAllAccounts } = await import('./simplefin.js');
-    const err = await refreshAllAccounts(true).then(() => null, e => e as ProviderRefreshError);
-    expect(err!.failures[0].reason).toBe('network error');
-    expect(JSON.stringify(err!.failures)).not.toContain('pass456');
-    vi.unstubAllGlobals();
   });
 });

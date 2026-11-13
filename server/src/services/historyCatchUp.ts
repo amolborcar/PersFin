@@ -26,8 +26,8 @@ const BACKFILL_VERSION = 'backfill_version';
  */
 export const CURRENT_BACKFILL_VERSION = 2;
 
-// A rebuild is expensive (a price series per ticker, plus transactions and home
-// values), so outside of a one-time repair it runs at most weekly.
+// A rebuild is expensive (a price series per ticker, plus transactions), so
+// outside of a one-time repair it runs at most weekly.
 const MIN_DAYS_BETWEEN_RUNS = 7;
 // Recent history is what the dashboard actually shows, so completeness is judged
 // over this trailing window rather than the whole 5 years.
@@ -44,7 +44,7 @@ export interface BackfillDecision {
 }
 
 export interface BackfillFacts {
-  hasSources: boolean;      // any account, property or manual asset to reconstruct from
+  hasSources: boolean;      // any account or manual asset to reconstruct from
   snapshotCount: number;    // total rows in net_worth_snapshots
   coveredDays: number;      // distinct dates present in the trailing window
   windowDays: number;       // size of that window
@@ -65,7 +65,7 @@ const SKIP = (reason: string): BackfillDecision => ({ run: false, mode: 'missing
  */
 export function decideBackfill(f: BackfillFacts): BackfillDecision {
   // Nothing to reconstruct from — a rebuild would just write zeroes.
-  if (!f.hasSources) return SKIP('no accounts or properties yet');
+  if (!f.hasSources) return SKIP('no accounts or manual assets yet');
 
   // A known-bad-history repair outranks everything and ignores the throttle; it
   // self-limits because the version stamp is written on success.
@@ -112,7 +112,6 @@ export function readBackfillFacts(now: Date = new Date()): BackfillFacts {
   const one = <T>(sql: string, ...args: unknown[]) => db.prepare(sql).get(...args) as T;
 
   const { n: accounts } = one<{ n: number }>('SELECT COUNT(*) AS n FROM accounts WHERE hidden = 0');
-  const { n: properties } = one<{ n: number }>('SELECT COUNT(*) AS n FROM properties');
   const { n: manual } = one<{ n: number }>('SELECT COUNT(*) AS n FROM manual_assets');
   const { n: snapshotCount } = one<{ n: number }>('SELECT COUNT(*) AS n FROM net_worth_snapshots');
 
@@ -126,7 +125,7 @@ export function readBackfillFacts(now: Date = new Date()): BackfillFacts {
   const parsed = storedRaw == null ? NaN : Number(storedRaw);
 
   return {
-    hasSources: accounts + properties + manual > 0,
+    hasSources: accounts + manual > 0,
     snapshotCount,
     coveredDays,
     windowDays: COVERAGE_WINDOW_DAYS,

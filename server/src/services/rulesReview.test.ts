@@ -7,14 +7,14 @@ import type { AddressInfo } from 'net';
 /**
  * Rules review: attribution counts, shadow detection, descriptions and the
  * PATCH/DELETE routes. The pure core (buildRulesReview) is exercised with
- * synthetic rows; the DB-backed half seeds a throwaway SimpleFIN cache like
+ * synthetic rows; the DB-backed half seeds a throwaway Plaid cache like
  * budgetFixes.test.ts.
  */
 
 const TMP = mkdtempSync(path.join(tmpdir(), 'kevfin-rules-'));
 process.env.DB_PATH = path.join(TMP, 'rules.db');
 
-const { refreshConnection } = await import('./simplefin.js');
+const { seedPlaidItem } = await import('../db/plaidSeed.js');
 const budget = await import('./budget.js');
 const review = await import('./rulesReview.js');
 const { getDb } = await import('../db/schema.js');
@@ -165,11 +165,10 @@ async function seed() {
       t('2026-05-15', -45, 'YY MYSTERY SHOP'),
     ],
   };
-  db.prepare('INSERT INTO simplefin_connections (id, access_url) VALUES (1, ?)')
-    .run('https://demo:demo@bridge.example.invalid/simplefin');
-  db.prepare('INSERT OR REPLACE INTO provider_cache (key, fetched_at, payload) VALUES (?, ?, ?)')
-    .run('sf_cache_1', NOW.getTime(), JSON.stringify([checking]));
-  await refreshConnection(1, 'https://demo:demo@bridge.example.invalid/simplefin');
+  seedPlaidItem(db, 'rules-item', [{
+    id: checking.id, org: checking.org.name, name: checking.name, balance: parseFloat(checking.balance),
+    transactions: checking.transactions.map(t => ({ ...t, amount: parseFloat(t.amount) })),
+  }], NOW.getTime());
 
   await budget.applyCategoryRule('zz market #12', 'Groceries', 'all'); // exact + base 'zz market'
   await budget.applySmartRules([{ base: 'zz market', contains: 'market', category: 'Restaurants & Bars' }]); // outranked by the exact rule for #12, wins for #99

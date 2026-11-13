@@ -1,22 +1,22 @@
-// Structured failure for a provider-wide refresh (SimpleFIN / Plaid), so the "Sync
-// now" response can say WHICH connection failed and why without ever echoing a raw
+// Structured failure for a provider-wide refresh (Plaid), so the "Sync now"
+// response can say WHICH connection failed and why without ever echoing a raw
 // error. Raw errors are unsafe to forward: an AxiosError carries the Plaid secret
-// and access_token in err.config, and a SimpleFIN access URL embeds its credentials.
+// and access_token in err.config.
 // Everything in `failures` is therefore built from allow-listed pieces only: the
 // institution name (user data) and a short reason code.
 
 export interface ItemFailure {
-  label: string;  // institution name, or "SimpleFIN connection 3" when unknown
+  label: string;  // institution name, or "Plaid item" when unknown
   reason: string; // e.g. "ITEM_LOGIN_REQUIRED", "HTTP 403", "network error"
 }
 
 export class ProviderRefreshError extends Error {
   constructor(
-    readonly provider: 'Plaid' | 'SimpleFIN',
+    readonly provider: 'Plaid',
     readonly total: number,
     readonly failures: ItemFailure[],
   ) {
-    super(`${provider} refresh failed for ${failures.length} of ${total} ${provider === 'Plaid' ? 'item' : 'connection'}(s)`);
+    super(`${provider} refresh failed for ${failures.length} of ${total} item(s)`);
     this.name = 'ProviderRefreshError';
   }
 }

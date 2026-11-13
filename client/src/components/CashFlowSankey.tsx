@@ -19,7 +19,6 @@ interface CashFlow {
   range: string; label: string;
   span: { from: string | null; to: string };  // the dates the range actually covers
   income: number; spending: number; savings: number;
-  mortgage: number;                           // part of `spending` that is mortgage payments
   nodes: SankeyNode[]; links: SankeyLink[];
 }
 interface CashTxn { id: string; date: string; payee: string; merchant: string; account: string; category: string; suggested: string; amount: number; description: string; memo: string; postedAt: number; transactedAt: number | null; amountEdited?: boolean }
@@ -417,12 +416,6 @@ export default function CashFlowSankey({ privacy, cats, groups, onRecategorize, 
             </div>
           )}
         </div>
-      )}
-
-      {data && data.mortgage > 0 && (
-        <p style={{ color: 'var(--muted)', fontSize: 11.5, marginBottom: 8 }}>
-          Spending includes {money(data.mortgage)} of mortgage payments, so it runs higher than “Spent” on the Overview, which leaves the mortgage out (see Housing carry there). Saved and savings rate are after the mortgage.
-        </p>
       )}
 
       {loading && <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Building cash-flow diagram…</div>}

@@ -26,7 +26,7 @@ describe('decideBackfill', () => {
     // A rebuild on an empty DB would just write a wall of zeroes.
     const d = decideBackfill(healthy({ hasSources: false, snapshotCount: 0, storedVersion: null }));
     expect(d.run).toBe(false);
-    expect(d.reason).toMatch(/no accounts or properties/);
+    expect(d.reason).toMatch(/no accounts or manual assets/);
   });
 
   it('builds the full window on a fresh install', () => {

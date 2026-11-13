@@ -10,7 +10,6 @@ import { fmtMoney, fmtDate } from '../lib/format.ts';
 interface ChartPoint {
   date: string;
   accounts_total: number;
-  real_estate_total: number;
   net_worth: number;
   index?: number | null;
 }
@@ -19,14 +18,12 @@ export default function NetWorthChart({
   data,
   mode = 'stacked',
   showAccounts = true,
-  showRealEstate = true,
   indexLabel,
   onToggleSeries,
 }: {
   data: ChartPoint[];
   mode?: 'stacked' | 'lines';
   showAccounts?: boolean;
-  showRealEstate?: boolean;
   indexLabel?: string;
   onToggleSeries?: (dataKey: string) => void;
 }) {
@@ -45,10 +42,7 @@ export default function NetWorthChart({
       if (typeof p.index === 'number' && Number.isFinite(p.index)) vals.push(p.index);
       // In stacked mode the areas sum to net_worth, which is already counted;
       // only the separate lines set their own extents.
-      if (!stacked) {
-        if (showAccounts) vals.push(p.accounts_total);
-        if (showRealEstate) vals.push(p.real_estate_total);
-      }
+      if (!stacked && showAccounts) vals.push(p.accounts_total);
     }
     if (vals.length === 0) return axisScale(0, 0, { zeroBased: true });
     // Stacked areas are read against a $0 baseline; lines mode zooms in so a
@@ -57,7 +51,7 @@ export default function NetWorthChart({
       zeroBased: stacked,
       targetTicks: isMobile ? 4 : 5,
     });
-  }, [sorted, stacked, showAccounts, showRealEstate, isMobile]);
+  }, [sorted, stacked, showAccounts, isMobile]);
 
   const x = useMemo(() => dateTicks(sorted.map(p => p.date), isMobile ? 4 : 7), [sorted, isMobile]);
 
@@ -68,10 +62,6 @@ export default function NetWorthChart({
             series re-renders (recharts otherwise drops series on type swap). */}
         <ComposedChart key={mode} data={sorted} margin={{ top: 8, right: 16, left: 16, bottom: 0 }}>
           <defs>
-            <linearGradient id="gRE" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--green)" stopOpacity={0.7} />
-              <stop offset="95%" stopColor="var(--green)" stopOpacity={0.4} />
-            </linearGradient>
             <linearGradient id="gAcc" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--amber)" stopOpacity={0.7} />
               <stop offset="95%" stopColor="var(--amber)" stopOpacity={0.35} />
@@ -116,11 +106,6 @@ export default function NetWorthChart({
 
           {stacked ? (
             <>
-              {/* Stacked composition: real estate on the bottom, accounts on top. */}
-              <Area
-                type="monotone" dataKey="real_estate_total" name="Home equity" stackId="nw"
-                stroke="var(--green)" fill="url(#gRE)" strokeWidth={1.5} dot={false} hide={!showRealEstate}
-              />
               <Area
                 type="monotone" dataKey="accounts_total" name="Accounts & assets" stackId="nw"
                 stroke="var(--amber)" fill="url(#gAcc)" strokeWidth={1.5} dot={false} hide={!showAccounts}
@@ -129,10 +114,6 @@ export default function NetWorthChart({
           ) : (
             <>
               {/* Trend lines, no fill — readable against a zoomed axis. */}
-              <Line
-                type="monotone" dataKey="real_estate_total" name="Home equity"
-                stroke="var(--green)" strokeWidth={2} dot={false} hide={!showRealEstate}
-              />
               <Line
                 type="monotone" dataKey="accounts_total" name="Accounts & assets"
                 stroke="var(--amber)" strokeWidth={2} dot={false} hide={!showAccounts}

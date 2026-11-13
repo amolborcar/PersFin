@@ -9,6 +9,19 @@ accounts plus real estate into one private dashboard, then layers on allocation
 analysis, budgeting, cash-flow, and a Monte Carlo retirement forecast. It runs
 entirely on the user's own machine — **financial data never leaves it.**
 
+## Rebuild in progress — read this first
+
+This repository is being rebuilt into a personal, YNAB-style budgeting app
+(Plaid only, no real estate, personal category file, AI categorization, weekly
+email/push reports, macOS only, always on via launchd). **Before any change,
+read [`docs/REBUILD-PLAN.md`](docs/REBUILD-PLAN.md).** It holds the decisions,
+the phases in order, and the status of each phase. Sections of this file that
+conflict with the plan (SimpleFIN, real estate, Docker, Windows) describe the
+old app and will be updated in Phase 9.
+
+The repository is independent (no longer a fork of `kxl3785/KevFin`). Open PRs
+against `amolborcar/PersFin` only.
+
 ## Architecture
 
 ```
@@ -109,4 +122,3 @@ CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`. Keep it gre
 - Budgeting (largest file, ~1.7k lines): `services/budget.ts`
 - Recurring-bill detection: `services/recurring.ts`
 - Forecast (Monte Carlo, client-side, memoized): `client/src/pages/Forecast.tsx`
-- Mortgage/amortization: `util/amortization.ts`, `services/mortgage.ts`

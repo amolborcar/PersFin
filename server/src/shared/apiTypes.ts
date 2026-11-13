@@ -10,7 +10,6 @@
 export interface Snapshot {
   date: string;
   accounts_total: number;
-  real_estate_total: number;
   net_worth: number;
 }
 
@@ -39,37 +38,9 @@ export interface ManualAsset {
   updated_at: string;
 }
 
-export interface Property {
-  id: number;
-  address: string;
-  zestimate: number | null;
-  mortgage_balance: number;
-  // Amortization inputs — when principal + rate + start are set, mortgage_balance
-  // is computed from a standard schedule server-side instead of entered manually.
-  mortgage_principal: number | null;
-  mortgage_rate: number | null;
-  mortgage_start: string | null;
-  mortgage_term_years: number | null;
-  // Recurring carrying costs (annual $). Informational on the dashboard; drive the
-  // Budget housing breakdown and the Forecast's modeled housing outflow.
-  property_tax_annual: number | null;
-  insurance_annual: number | null;
-  hoa_annual: number | null;
-  rental_income_annual: number | null; // income the property generates (e.g. rent)
-  updated_at: string;
-}
-
 export interface Breakdown {
   accounts: Account[];
   manualAssets: ManualAsset[];
-  properties: Property[];
-}
-
-export interface Connection {
-  id: number;
-  account_count: number;
-  institutions: string;
-  created_at: string;
 }
 
 export interface PlaidItem {

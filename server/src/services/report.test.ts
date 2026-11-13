@@ -112,12 +112,12 @@ describe('savings wording', () => {
 
 describe('aggregateCashflow', () => {
   const months = [
-    { income: 5000, spending: 2000, mortgage: 1000, byCategory: [{ category: 'Groceries', spent: 800 }, { category: 'Travel', spent: 1300 }] },
+    { income: 5000, spending: 3000, byCategory: [{ category: 'Groceries', spent: 800 }, { category: 'Travel', spent: 1300 }, { category: 'Rent', spent: 1000 }] },
     null,
-    { income: 5000, spending: 1000, mortgage: 1000, byCategory: [{ category: 'Groceries', spent: 400 }, { category: 'Zero', spent: 0 }, { category: 'Gas', spent: 600 }] },
+    { income: 5000, spending: 2000, byCategory: [{ category: 'Groceries', spent: 400 }, { category: 'Zero', spent: 0 }, { category: 'Gas', spent: 600 }, { category: 'Rent', spent: 1000 }] },
   ];
   const cf = aggregateCashflow(['2026-04', '2026-05', '2026-06'], months, c => c.toUpperCase(), 2);
-  it('counts mortgage payments in spending so saved = income - spending', () => {
+  it('sums income and spending so saved = income - spending', () => {
     expect(cf.income).toBe(10000);
     expect(cf.spending).toBe(5000);
     expect(cf.saved).toBe(5000);
@@ -131,8 +131,8 @@ describe('aggregateCashflow', () => {
       { label: 'Jun', income: 5000, spending: 2000 },
     ]);
   });
-  it('ranks categories (incl. Mortgage) and reconciles "everything else"', () => {
-    expect(cf.categories).toEqual([{ label: 'MORTGAGE', amount: 2000 }, { label: 'TRAVEL', amount: 1300 }]);
+  it('ranks categories (incl. Rent) and reconciles "everything else"', () => {
+    expect(cf.categories).toEqual([{ label: 'RENT', amount: 2000 }, { label: 'TRAVEL', amount: 1300 }]);
     expect(cf.other).toBe(5000 - 3300);
   });
   it('is empty (not a $0 quarter) when no month has data', () => {
@@ -141,21 +141,28 @@ describe('aggregateCashflow', () => {
 });
 
 describe('KPIs, brief and attribution wiring', () => {
-  const ok = { saved: 1000, savingsRate: 0.2, status: 'ok' as const };
-  const attr = attributeChange({ start: 100000, end: 112000, saved: 3000, homeEquityDelta: 2000 });
+  const ok = { saved: 1000, savingsRate: 0.2, spending: 4000, status: 'ok' as const };
+  const attr = attributeChange({ start: 100000, end: 112000, saved: 3000 });
   it('shows "—" with a reason for any tile lacking inputs', () => {
-    const k = buildKpis({ cashflow: { saved: 0, savingsRate: null, status: 'failed' }, attribution: null, runway: null, homeShare: null });
+    const k = buildKpis({ cashflow: { saved: 0, savingsRate: null, spending: 0, status: 'failed' }, attribution: null, runway: null, priorSpending: null });
     expect(k.map(x => x.value)).toEqual(['—', '—', '—', '—']);
     expect(k.every(x => x.note.length > 0)).toBe(true);
   });
   it('flags a runway below 6 months', () => {
-    const k = buildKpis({ cashflow: ok, attribution: attr, runway: 4.2, homeShare: 0.47 });
+    const k = buildKpis({ cashflow: ok, attribution: attr, runway: 4.2, priorSpending: { label: 'Q1', amount: 5000 } });
     expect(k[2]).toMatchObject({ value: '4.2 mo', note: 'Below a 6-month target', noteTone: 'warn' });
-    expect(k[1].value).toBe('+$7,000');
-    expect(k[3].value).toBe('47%');
+    expect(k[1].value).toBe('+$9,000');
+  });
+  it('compares spending with the prior quarter, or says there is none', () => {
+    expect(buildKpis({ cashflow: ok, attribution: null, runway: null, priorSpending: { label: 'Q1', amount: 5000 } })[3])
+      .toMatchObject({ label: 'Spent this quarter', value: '$4,000', note: '−20% vs. Q1' });
+    expect(buildKpis({ cashflow: ok, attribution: null, runway: null, priorSpending: { label: 'Q1', amount: 3200 } })[3].note)
+      .toBe('+25% vs. Q1');
+    expect(buildKpis({ cashflow: ok, attribution: null, runway: null, priorSpending: null })[3].note)
+      .toBe('No prior quarter to compare');
   });
   it('colors negative savings down', () => {
-    const k = buildKpis({ cashflow: { saved: -500, savingsRate: -0.1, status: 'ok' }, attribution: null, runway: null, homeShare: null });
+    const k = buildKpis({ cashflow: { saved: -500, savingsRate: -0.1, spending: 5500, status: 'ok' }, attribution: null, runway: null, priorSpending: null });
     expect(k[0]).toMatchObject({ value: '−$500', valueTone: 'down' });
   });
   it('writes deterministic bullets naming the biggest driver and prior savings rate', () => {
@@ -164,7 +171,7 @@ describe('KPIs, brief and attribution wiring', () => {
       cashflow: { savingsRate: 0.2, status: 'ok' }, prior: { label: 'Q1', rate: 0.26 }, runway: 4.2,
     });
     expect(b[0]).toContain('rose $12,000');
-    expect(b[0]).toContain('led by market moves and other changes (+$7,000)');
+    expect(b[0]).toContain('led by market moves and other changes (+$9,000)');
     expect(b[1]).toBe('You kept 20% of what you earned this quarter (26% in Q1).');
     expect(b[2]).toContain('4.2 months');
     expect(b).toHaveLength(3);
@@ -198,11 +205,11 @@ const model = (over: Partial<ReportModel> = {}): ReportModel => ({
     shadeKeys: ['2026-07', '2026-08', '2026-09'],
   },
   kpis: buildKpis({
-    cashflow: { saved: -150, savingsRate: -0.15, status: 'ok' },
-    attribution: attributeChange({ start: 505000, end: 500000, saved: -150, homeEquityDelta: -1000 }), runway: 4.2, homeShare: 0.4,
+    cashflow: { saved: -150, savingsRate: -0.15, spending: 1150, status: 'ok' },
+    attribution: attributeChange({ start: 505000, end: 500000, saved: -150 }), runway: 4.2, priorSpending: null,
   }),
   brief: ['First point.', 'Second <point>.'], noteSource: 'summary',
-  attribution: attributeChange({ start: 505000, end: 500000, saved: -150, homeEquityDelta: -1000 }),
+  attribution: attributeChange({ start: 505000, end: 500000, saved: -150 }),
   startLabel: 'Jun 30', endLabel: 'Sep 30',
   accounts: [{ name: 'Checking', org: 'Bank <&>', balance: 1000, change: 50 }], accountsStatus: 'ok', showChange: true,
   allocation: [{ label: 'Equity', pct: 100 }], allocationStatus: 'ok', allocationTotal: 350000,
@@ -235,7 +242,7 @@ describe('renderReportHtml', () => {
   it('colors negative savings and negative waterfall steps down, not up', () => {
     const html = renderReportHtml(model());
     expect(html).toContain('<p class="kpi-v down">−$150</p>');
-    expect(html).toContain('minus $1,000 home equity');
+    expect(html).toContain('minus $4,850 market');
     expect(html).toContain('fill="#b0473c"');
   });
   it('omits the year-over-year line when there is no valid figure, shows it when there is', () => {

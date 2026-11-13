@@ -50,7 +50,7 @@ interface RecurringResponse { items: RecurringItem[]; suggestions: RecurringSugg
 
 // Colors keyed by the new taxonomy's subcategories (grouped by hue).
 const CATEGORY_COLORS: Record<string, string> = {
-  'Mortgage': 'var(--red)', 'Rent': '#6c8fff', 'Home Improvement': '#6c8fff', 'Home Services': '#6c8fff',
+  'Rent': '#6c8fff', 'Home Improvement': '#6c8fff', 'Home Services': '#6c8fff',
   'Gas & Electric': 'var(--amber)', 'Water': '#38bdf8', 'Internet & Phone': 'var(--amber)', 'Subscriptions': 'var(--accent)',
   'Insurance': '#2dd4bf', 'Financial Fees': '#2dd4bf', 'Taxes': '#2dd4bf',
   'Medical': '#34d399', 'Fitness': '#34d399',

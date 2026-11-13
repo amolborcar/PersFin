@@ -1,45 +1,44 @@
 import { getDb } from '../db/schema.js';
-import { getAllTransactions, type RawTxn } from './simplefin.js';
-import { syncFeedTransactions, readFeedTransactions, FEED_WINDOW_DAYS } from './feedStore.js';
+import { syncFeedTransactions, readFeedTransactions, FEED_WINDOW_DAYS, type RawTxn } from './feedStore.js';
 import { getAllPlaidTransactions } from './plaid.js';
-import { realEstateCarry, type RealEstateCarry } from './mortgage.js';
 import {
-  TAXONOMY, CATEGORIES, suggestEmoji, normalizeImportedCategory, ensureImportedCategories,
+  suggestEmoji, normalizeImportedCategory, isIncomeCategory, resolveAlias, INCOME_GROUP,
   type Category, type CatDef, type CatGroup,
 } from './taxonomy.js';
 import {
   getCategoryLabeler, getActiveCategories, getCategoryGroupMap,
-  defaultGroupOf, groupColorOf, GROUP_COLOR, TAX_EMOJI,
+  defaultGroupOf, groupColorOf, addImportedCategories,
 } from './categories.js';
 
-// Combined bank/card transaction feed for budgeting. SimpleFIN and Plaid expose
-// the identical RawTxn shape (Plaid normalized to SimpleFIN's "+ = money in"
-// sign), so the budget treats both feeds uniformly.
+// Bank/card transaction feed for budgeting, from Plaid (normalized to the
+// budget's "+ = money in" sign).
 //
 // Reading the feed goes through the durable transactions table: the provider
-// calls here trigger their ~daily lazy cache refresh (so page views keep data
-// fresh, as before), the current payloads are synced into the table, and the
-// table is what gets served — including rows older than the providers' 2-year
-// window, which used to silently age out of the budget.
+// call here triggers its ~daily lazy cache refresh (so page views keep data
+// fresh), the current payload is synced into the table, and the table is what
+// gets served — including rows older than the provider's 2-year window, which
+// used to silently age out of the budget.
 async function getFeedTransactions(): Promise<RawTxn[]> {
-  const [sf, plaid] = await Promise.all([getAllTransactions(), getAllPlaidTransactions()]);
+  const plaid = await getAllPlaidTransactions();
   const db = getDb();
   const since = Math.floor(Date.now() / 1000) - FEED_WINDOW_DAYS * 86400;
-  syncFeedTransactions(db, 'simplefin', sf, since);
   syncFeedTransactions(db, 'plaid', plaid, since);
   return readFeedTransactions(db);
 }
 
-// The taxonomy constants and pure category helpers live in taxonomy.ts
-// (dependency-free, so the versioned migration runner can use them without an
-// import cycle). Re-exported here so consumers keep importing from budget.
-export { TAXONOMY, CATEGORIES, suggestEmoji, normalizeImportedCategory } from './taxonomy.js';
+// The taxonomy and pure category helpers live in taxonomy.ts (dependency-free,
+// so the versioned migration runner can use them without an import cycle); the
+// live taxonomy comes from the personal category file. Re-exported here so
+// consumers keep importing from budget.
+export { DEFAULT_TAXONOMY, DEFAULT_CATEGORIES, getTaxonomy, suggestEmoji, normalizeImportedCategory } from './taxonomy.js';
 export type { Category, CatDef, CatGroup } from './taxonomy.js';
 
 // Category management (labeler, groups, active list, snapshot/undo/reset)
 // lives in categories.ts; re-exported so routes keep importing from budget.
 export * from './categories.js';
-const INCOME_SET = new Set(TAXONOMY.find(g => g.name === 'Income')!.categories.map(c => c.name));
+// Income categories: the category file's Income group plus the system income
+// categories. Looked up live, so an edit to the file applies without a restart.
+const INCOME_SET = { has: isIncomeCategory };
 // Internal money movement — excluded from spending AND income everywhere. Credit
 // Card Payment is its own visible type but, like Transfers, never counts toward
 // the budget (paying a card is moving money, not new spending).
@@ -180,7 +179,7 @@ function merchantKey(payee: string, description: string): string {
 }
 
 // Trailing 4 digits of an account name (e.g. "Chase Sapphire (4167)" → "4167"),
-// a stable identifier shared between a SimpleFIN feed and a CSV export of the same
+// a stable identifier shared between the bank feed and a CSV export of the same
 // account even when the names are worded differently. '' when none are present.
 export const acctLast4 = (name: string): string => name.match(/(\d{4})\D*$/)?.[1] ?? '';
 
@@ -358,13 +357,11 @@ const TRANSFER_RE = /autopay|online payment|\btransfer\b|moneyline|brokerage ser
 // the TRANSFER_RE check above.
 const P2P_RE = /\bzelle\b|\bvenmo\b|cash ?app/i;
 
-const MORTGAGE_RE = /\bmortgage\b|home loan|\bheloc\b|property payment|home equity|loancare|mr\.?\s*cooper|pennymac|quicken loan|rocket mortgage|newrez|nationstar|shellpoint|phh mortgage|sps servicing|carrington mortgage/i;
-
-// Liability accounts — credit cards, loans, mortgages, lines of credit. A
+// Liability accounts — credit cards, loans, lines of credit. A
 // POSITIVE amount here is a payment/credit (money coming IN to settle the
 // balance), never real income, so it must not inflate income.
-const LIABILITY_ACCT_RE = /mortgage|home ?loan|\bheloc\b|line of credit|\bloan\b|credit card|\bvisa\b|mastercard|\bamex\b|discover|sapphire|freedom|venture|palladium|signature|\bcard\b/i;
-// Credit-card accounts specifically (subset of liabilities, excluding loans/HELOCs)
+const LIABILITY_ACCT_RE = /line of credit|\bloan\b|credit card|\bvisa\b|mastercard|\bamex\b|discover|sapphire|freedom|venture|palladium|signature|\bcard\b/i;
+// Credit-card accounts specifically (subset of liabilities, excluding loans)
 // — a positive amount here is a card payment, labeled Credit Card Payment.
 const CC_ACCT_RE = /credit card|\bvisa\b|mastercard|\bamex\b|american express|discover|sapphire|freedom|venture|palladium|signature|\bcard\b/i;
 
@@ -374,7 +371,6 @@ export function autoCategory(payee: string, description: string, amount: number)
   // P2P (Zelle/Venmo/Cash App) bypasses the transfer rule so it stays visible and
   // categorizable instead of being hidden as an internal move.
   if (!P2P_RE.test(text) && TRANSFER_RE.test(text)) return 'Transfers';
-  if (MORTGAGE_RE.test(text)) return 'Mortgage';
   if (amount > 0) {
     if (PAYCHECK_RE.test(text)) return 'Paychecks';
     if (DIVIDEND_RE.test(text)) return 'Dividends & Capital Gains';
@@ -465,14 +461,12 @@ function detectTransferPairs(all: BudgetTxn[], ruledIds: Set<string>): number {
 export interface BudgetSummary {
   months: string[];                       // available YYYY-MM, newest first
   month: string;                          // the month being shown
-  transactions: BudgetTxn[];              // for the requested month (excludes Transfers; Mortgage kept but flagged)
+  transactions: BudgetTxn[];              // for the requested month (excludes Transfers)
   byCategory: { category: string; spent: number; count: number; target: number; period?: 'monthly' | 'annual'; ytdSpent?: number; excluded?: boolean }[];
   needsReview: BudgetTxn[];               // uncategorized ('Other') expenses to assign
   recent: BudgetTxn[];                    // most-recent transactions across all months (for the overview)
   income: number;
   spending: number;
-  mortgage: number;                       // mortgage payments (excluded from spending)
-  housing: RealEstateCarry;               // property-derived carry breakdown (informational; not in spending)
   totalBudget: number;                    // sum of targets
   // For the in-progress month both figures are measured THROUGH the same day of the
   // month (`asOfDay`), so a partial month is never compared with a whole one.
@@ -582,7 +576,7 @@ export function acceptImported(id?: string): number {
     : db.prepare('UPDATE imported_txns SET accepted = 1 WHERE accepted = 0').run().changes;
 }
 
-// Physically delete imported transactions that duplicate a SimpleFIN transaction
+// Physically delete imported transactions that duplicate a bank-feed transaction
 // (matched on date | amount | merchant). Returns how many were removed.
 const normAcct = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/\d+$/, '');
 function acctCompatible(a: string, b: string): boolean {
@@ -668,7 +662,7 @@ export function importTransactions(csv: string): { imported: number; skipped: nu
       const category = (ci >= 0 ? row[ci] : '')?.trim() || '';
       if (category) csvCats.add(category);
       const merchant = merchantKey(payee, '');
-      // Dedup key (also matches SimpleFIN at read time): date|amount|merchant|account.
+      // Dedup key (also matches the bank feed at read time): date|amount|merchant|account.
       const baseId = `imp|${date}|${amount.toFixed(2)}|${merchant}|${account.toLowerCase().slice(0, 20)}`;
       // Two genuinely identical rows in one file (same-day same-amount same-merchant
       // charges) must both import: the 2nd+ occurrence gets a `|n` suffix. The first
@@ -680,14 +674,14 @@ export function importTransactions(csv: string): { imported: number; skipped: nu
       info.changes > 0 ? imported++ : skipped++;
     }
   })();
-  ensureImportedCategories(db, [...csvCats]); // keep any new Monarch categories from this import
+  addImportedCategories([...csvCats]); // keep any new Monarch categories from this import
   return { imported, skipped };
 }
 
-// Build the merged, categorized transaction list (SimpleFIN + imported, deduped,
+// Build the merged, categorized transaction list (bank feed + imported, deduped,
 // brokerage trades excluded). Shared by the monthly budget and the projection.
 // Exported so recurring-bill detection sees the SAME merged, deduped, fully
-// categorized ledger the Budget view does (SimpleFIN + imported documents) —
+// categorized ledger the Budget view does (bank feed + imported documents) —
 // otherwise imported-only bills (utilities, pool/maid/landscaping, etc.) never
 // surface as recurring. Categories returned are canonical (un-renamed).
 export async function getCategorizedTransactions(): Promise<BudgetTxn[]> {
@@ -729,6 +723,9 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
       .map(a => [a.id, a.category])
   );
   const activeSet = new Set(getActiveCategories());
+  // A name automatic categorization (or an import) produces may be the built-in
+  // name of a category the owner renamed: map it to the current name.
+  const current = (c: string): string => (activeSet.has(c) ? c : resolveAlias(c) ?? c);
   const isSignFlipped = getSignFlipMatcher(); // merchant → whether its sign is reversed
   const ruledIds = new Set<string>(); // txns whose category the user set explicitly
   const sfRaw = (await getFeedTransactions()).filter(t => acctCat.get(t.accountId) !== 'brokerage');
@@ -737,7 +734,7 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     const date = new Date(t.posted * 1000).toISOString().slice(0, 10);
     const flip = isSignFlipped(m);
     const amt = flip ? -t.amount : t.amount;
-    const suggested = autoCategory(t.payee, t.description, amt); // rule-based guess, pre-override
+    const suggested = current(autoCategory(t.payee, t.description, amt)); // rule-based guess, pre-override
     const rule = pickRule(t.id, m, `${t.payee} ${t.description}`.toLowerCase(), amt);
     const ruled = rule?.category as Category | undefined;
     if (ruled != null) ruledIds.add(t.id);
@@ -752,7 +749,7 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
   });
 
   // Merge imported (Monarch etc.) transactions, dropping any that duplicate a
-  // SimpleFIN transaction. A bank feed and a CSV export routinely disagree on a
+  // bank-feed transaction. A bank feed and a CSV export routinely disagree on a
   // transaction's posted date by a day or two AND word the merchant differently
   // ("Reformed Radiolo Payroll" vs "Reformed Radiology"), so the old exact
   // date|merchant match missed almost every real dupe — letting the same paycheck or
@@ -772,8 +769,8 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     const k = amountKey(e.amount);
     (byAmount.get(k) ?? byAmount.set(k, []).get(k)!).push(e);
   };
-  // Seed with SimpleFIN txns on their ORIGINAL (pre-flip) amount so a sign-reversal
-  // rule never breaks SimpleFIN↔import matching.
+  // Seed with bank-feed txns on their ORIGINAL (pre-flip) amount so a sign-reversal
+  // rule never breaks feed↔import matching.
   for (const t of sfRaw) addEntry({ amount: t.amount, day: postedDayMs(t.posted), merchant: merchantKey(t.payee, t.description), acct: acctLast4(t.accountName), consumed: false });
   // Find (and consume) an unmatched candidate that this imported row duplicates.
   // An earlier imported row with the same raw account string came from the same
@@ -798,11 +795,12 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     addEntry({ ...dup, consumed: false, importedAcct });
     const flip = isSignFlipped(r.merchant);
     const amt = flip ? -r.amount : r.amount;
-    const suggested = autoCategory(r.payee, '', amt);
+    const suggested = current(autoCategory(r.payee, '', amt));
     // An explicit per-row recategorization (cat_edited) is the most specific
     // user signal — it wins over merchant-level rules.
     const edited = r.cat_edited && r.category
       ? [...activeSet].find(a => a.toLowerCase() === normalizeImportedCategory(r.category!).toLowerCase())
+        ?? resolveAlias(normalizeImportedCategory(r.category!))
       : undefined;
     const rule = edited ? undefined : pickRule(r.id, r.merchant, `${r.payee}`.toLowerCase(), amt);
     const ruled = edited ?? rule?.category;
@@ -811,7 +809,7 @@ async function categorize(matches?: Map<string, number[]>): Promise<{ txns: Budg
     let ruleSource: RuleSource = rule?.kind ?? (edited ? 'import' : 'auto');
     if (!cat && r.category) {
       const norm = normalizeImportedCategory(r.category); // honor Monarch's category (aliases internal-money labels → Transfers)
-      cat = [...activeSet].find(a => a.toLowerCase() === norm.toLowerCase());
+      cat = [...activeSet].find(a => a.toLowerCase() === norm.toLowerCase()) ?? resolveAlias(norm);
       if (cat) ruleSource = 'import';
     }
     if (!cat) cat = suggested;
@@ -857,10 +855,10 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   // total is then clamped at >= 0 (a refund bigger than the period's charges can't
   // produce negative spending). Every total below is the sum of those clamped
   // category totals, so headline numbers always agree with the per-category rows.
-  // Spending per month (excludes income/transfers/mortgage) for prior-period comparisons.
+  // Spending per month (excludes income/transfers) for prior-period comparisons.
   const monthCat = new Map<string, Map<string, number>>(); // month -> category -> signed spend
   for (const t of all) {
-    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7)) || t.category === 'Mortgage') continue;
+    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7))) continue;
     const mk = t.date.slice(0, 7);
     const cm = monthCat.get(mk) ?? monthCat.set(mk, new Map()).get(mk)!;
     cm.set(t.category, (cm.get(t.category) ?? 0) - t.amount);
@@ -878,8 +876,7 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   // (every loop over `all` is empty) instead of throwing on `target.slice(...)`.
   const target = (month && months.includes(month) ? month : months[0]) ?? new Date().toISOString().slice(0, 7);
 
-  // Transfers are excluded from the budget transaction list. Mortgage is kept
-  // (shown grayed/“excluded”) so it stays visible without affecting totals.
+  // Transfers are excluded from the budget transaction list.
   const txns = all
     .filter(t => t.date.slice(0, 7) === target && !internal(t.category, target))
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -887,13 +884,9 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   const allMonthTxns = all.filter(t => t.date.slice(0, 7) === target);
   const catMap = new Map<string, { total: number; count: number }>();
   let income = 0;
-  let mortgage = 0;
-  let mortgageCount = 0;
   for (const t of allMonthTxns) {
     if (INCOME_SET.has(t.category)) { income += t.amount; continue; }
     if (internal(t.category, target)) continue;
-    // Mortgage cash regardless of sign — some sources post loan payments as positive.
-    if (t.category === 'Mortgage') { mortgage += Math.abs(t.amount); mortgageCount += 1; continue; }
     const e = catMap.get(t.category) ?? { total: 0, count: 0 };
     e.total -= t.amount; // signed: expenses (negative amounts) add, refunds subtract
     if (t.amount < 0) e.count += 1; // count only the expense rows
@@ -911,15 +904,13 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   const ytdByCat = new Map<string, number>();
   for (const t of all) {
     if (t.date.slice(0, 4) !== yearPrefix || t.date.slice(0, 7) > target) continue;
-    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7)) || t.category === 'Mortgage') continue;
+    if (INCOME_SET.has(t.category) || internal(t.category, t.date.slice(0, 7))) continue;
     ytdByCat.set(t.category, (ytdByCat.get(t.category) ?? 0) - t.amount); // signed; refunds net down
   }
   for (const [cat, v] of ytdByCat) ytdByCat.set(cat, Math.max(0, v));
 
   // Include every category that has spending OR a target (so budgets show even at $0 spent).
-  // Mortgage is intentionally omitted here — it's appended below as an excluded row.
   const catNames = new Set<string>([...catMap.keys(), ...targets.keys()]);
-  catNames.delete('Mortgage');
   const byCategory: BudgetSummary['byCategory'] = [...catNames]
     .map(category => {
       const tg = targets.get(category);
@@ -938,11 +929,6 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
       const bv = b.period === 'annual' ? b.ytdSpent : b.spent;
       return bv - av || b.target - a.target;
     });
-
-  // Mortgage stays visible as a grayed, excluded row (never counted in spending).
-  if (mortgage > 0) {
-    byCategory.push({ category: 'Mortgage', spent: mortgage, count: mortgageCount, target: 0, excluded: true });
-  }
 
   const needsReview = txns.filter(t => t.category === 'Miscellaneous' && t.amount < 0);
   // Monthly-equivalent total (annual targets contribute 1/12).
@@ -965,7 +951,7 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
     for (const t of all) {
       const mk = t.date.slice(0, 7);
       if (!want.has(mk) || parseInt(t.date.slice(8, 10)) > day) continue;
-      if (INCOME_SET.has(t.category) || internal(t.category, mk) || t.category === 'Mortgage') continue;
+      if (INCOME_SET.has(t.category) || internal(t.category, mk)) continue;
       const cm = cats.get(mk) ?? cats.set(mk, new Map()).get(mk)!;
       cm.set(t.category, (cm.get(t.category) ?? 0) - t.amount);
     }
@@ -989,7 +975,7 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
   const cumByDay = (monthKey: string): number[] => {
     const daily = new Array(32).fill(0);
     for (const t of all) {
-      if (t.date.slice(0, 7) !== monthKey || INCOME_SET.has(t.category) || internal(t.category, monthKey) || t.category === 'Mortgage') continue;
+      if (t.date.slice(0, 7) !== monthKey || INCOME_SET.has(t.category) || internal(t.category, monthKey)) continue;
       daily[parseInt(t.date.slice(8, 10))] -= t.amount; // signed: refunds reduce the running total
     }
     const cum = new Array(32).fill(0);
@@ -1027,13 +1013,13 @@ export async function getBudget(month?: string): Promise<BudgetSummary> {
     byCategory: byCategory.map(c => ({ ...c, category: lab.label(c.category) })),
     needsReview: needsReview.map(labelTxn),
     recent,
-    income, spending, mortgage, housing: realEstateCarry(), totalBudget,
+    income, spending, totalBudget,
     comparison: { priorMonth, priorYearAvg, priorYears }, asOfDay, daysInMonth: md, dailyCumulative, importedCount, importedPending,
   };
 }
 
 // Flat transaction list for the All-transactions tab. `range` is 'all' or a
-// YYYY-MM month. Excludes Transfers (internal moves); keeps Mortgage. Returns the
+// YYYY-MM month. Excludes Transfers (internal moves). Returns the
 // available months so the period selector can populate without a second call.
 export async function getTransactionsList(range = 'all'): Promise<{ months: string[]; transactions: BudgetTxn[] }> {
   ensureTables();
@@ -1083,10 +1069,10 @@ export async function getReviewQueue(): Promise<{ groups: ReviewGroup[]; topCate
   const all = await getCategorizedTransactions();
 
   // Rank candidate categories by how often the user already uses them (real
-  // expense categories only — never the catch-all, transfers, mortgage or income).
+  // expense categories only — never the catch-all, transfers or income).
   const freq = new Map<string, number>();
   for (const t of all) {
-    if (t.category === 'Miscellaneous' || isExcluded(t.category) || t.category === 'Mortgage' || INCOME_SET.has(t.category)) continue;
+    if (t.category === 'Miscellaneous' || isExcluded(t.category) || INCOME_SET.has(t.category)) continue;
     freq.set(t.category, (freq.get(t.category) ?? 0) + 1);
   }
   const activeSet = new Set(getActiveCategories());
@@ -1181,7 +1167,7 @@ export async function getSpendingProjection(): Promise<SpendingProjection> {
     if (ym > thisMonth) continue; // skip future-dated rows
     // Same card-payment rule as getBudget/getCashFlow: a payment only counts as
     // an internal move in months where the card's own purchases are tracked.
-    if (isInternalTransfer(t.category, projTrackedMonths.has(ym)) || t.category === 'Mortgage') continue;
+    if (isInternalTransfer(t.category, projTrackedMonths.has(ym))) continue;
     if (INCOME_SET.has(t.category)) { incomeByMonth.set(ym, (incomeByMonth.get(ym) ?? 0) + t.amount); continue; }
     const cm = catByMonth.get(ym) ?? new Map<string, number>();
     cm.set(t.category, (cm.get(t.category) ?? 0) - t.amount);
@@ -1407,8 +1393,7 @@ export async function applyCategoryRule(
 // --- Cash-flow Sankey -------------------------------------------------------
 // A 4-tier money-flow graph: income sources → Income → spending groups + Savings
 // → categories. Groups reuse the same taxonomy as the category picker. Transfers
-// (internal moves) are excluded; Mortgage IS included since it's real cash out —
-// unlike the Overview's "Spent", which leaves it out (the UI captions the difference).
+// (internal moves) are excluded.
 
 export type NodeFilter =
   | { type: 'income' }
@@ -1422,16 +1407,14 @@ export interface CashFlow {
   range: string; label: string;
   span: { from: string | null; to: string }; // actual date span covered (YYYY-MM-DD); `from` is null with no data
   income: number; spending: number; savings: number;
-  mortgage: number;                          // the part of `spending` that is mortgage payments
   nodes: SankeyNode[]; links: SankeyLink[];
 }
 export interface CashTxn { id: string; date: string; payee: string; merchant: string; account: string; category: string; suggested: string; amount: number; description: string; memo: string; postedAt: number; transactedAt: number | null; amountEdited?: boolean }
 
-const INCOME_COLOR = GROUP_COLOR['Income'] ?? '#22b8cf';
+const incomeColor = () => groupColorOf(INCOME_GROUP);
 const SAVINGS_COLOR = '#4ade80';
-// Expense category → display group + group colors are derived from TAXONOMY
-// (CATEGORY_GROUP / GROUP_COLOR, defined at the top). Unmapped categories fall
-// into the "Other" group.
+// Expense category → display group + group colors come from the category file
+// (see categories.ts). Unmapped categories fall into the "Custom" group.
 
 function rangeBounds(range: string): { start: string | null; label: string } {
   const now = new Date();
@@ -1523,17 +1506,17 @@ export async function getCashFlow(range = '12m', detail = false): Promise<CashFl
     return i;
   };
 
-  const incomeIdx = add('hub', 'Income', INCOME_COLOR, 1, 'hub', { type: 'income' });
+  const incomeIdx = add('hub', 'Income', incomeColor(), 1, 'hub', { type: 'income' });
 
   // Tier 0: income sources — top employers (payroll variants already merged),
   // remainder pooled into "Other income".
   for (const s of incomeSources.slice(0, SOURCE_TOP)) {
-    const si = add('src:' + s.key, s.label, INCOME_COLOR, 0, 'source', { type: 'source', value: s.key });
+    const si = add('src:' + s.key, s.label, incomeColor(), 0, 'source', { type: 'source', value: s.key });
     links.push({ source: si, target: incomeIdx, value: round2(s.amount) });
   }
   const restAmt = incomeSources.slice(SOURCE_TOP).reduce((s, x) => s + x.amount, 0);
   if (restAmt > 0) {
-    const si = add('src:__other', 'Other income', INCOME_COLOR, 0, 'source', { type: 'source', value: '__other' });
+    const si = add('src:__other', 'Other income', incomeColor(), 0, 'source', { type: 'source', value: '__other' });
     links.push({ source: si, target: incomeIdx, value: round2(restAmt) });
   }
 
@@ -1572,7 +1555,7 @@ export async function getCashFlow(range = '12m', detail = false): Promise<CashFl
       const gi = idx.get('grp:' + g)!;
       for (const [c, v] of [...inner.entries()].sort((a, b) => b[1] - a[1])) {
         // Display the emoji + renamed label; keep the canonical name in the click filter.
-        const emoji = cashLabeler.emoji(c) ?? TAX_EMOJI[c] ?? suggestEmoji(c);
+        const emoji = cashLabeler.emoji(c) ?? suggestEmoji(c);
         const ci = add('cat:' + c, `${emoji} ${cashLabeler.label(c)}`, color, 3, 'category', { type: 'category', value: c });
         links.push({ source: gi, target: ci, value: round2(v) });
       }
@@ -1581,7 +1564,7 @@ export async function getCashFlow(range = '12m', detail = false): Promise<CashFl
 
   const from = start ?? (txns.length ? txns.reduce((m, t) => (t.date < m ? t.date : m), txns[0].date) : null);
   const span = { from, to: new Date().toISOString().slice(0, 10) };
-  return { range, label, span, income: round2(income), spending: round2(spending), savings: round2(savings), mortgage: round2(catSpend.get('Mortgage') ?? 0), nodes, links };
+  return { range, label, span, income: round2(income), spending: round2(spending), savings: round2(savings), nodes, links };
 }
 
 // Transactions behind a clicked Sankey node/band, for the drill-down table.

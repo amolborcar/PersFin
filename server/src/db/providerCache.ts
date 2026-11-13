@@ -1,7 +1,7 @@
 import { getDb } from './schema.js';
 
-// Persistent cache for provider payloads (SimpleFIN /accounts, Plaid
-// transactions). These used to live as JSON blobs in the `meta` table, which
+// Persistent cache for provider payloads (Plaid transactions and
+// holdings). These used to live as JSON blobs in the `meta` table, which
 // mixed multi-MB payloads in with small settings and migration flags; they get
 // their own table so meta stays a settings store. Entries survive restarts and
 // are the offline fallback when a provider fetch fails.

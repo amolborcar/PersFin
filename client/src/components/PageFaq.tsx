@@ -38,19 +38,11 @@ function buildFaq(meta: AssumptionsMeta | null): Record<View, PageFaqContent> {
       items: [
         {
           q: 'Where does the history before today come from?',
-          a: 'Clicking Backfill reconstructs roughly the last 5 years rather than waiting to accumulate daily history points. Cash and credit are rebuilt from transactions, brokerage from each holding’s historical market price, and real estate from your entered Zestimate history. Daily history points capture every change going forward.',
+          a: 'Clicking Backfill reconstructs roughly the last 5 years rather than waiting to accumulate daily history points. Cash and credit are rebuilt from transactions, and brokerage from each holding’s historical market price. Daily history points capture every change going forward.',
         },
         {
           q: 'How are brokerage values reconstructed historically?',
           a: 'Each holding is scaled by its ticker’s historical price (via Stooq). Untickered index funds like 529 portfolios use a proxy ETF, and holdings with no priceable ticker — including crypto — are held flat at their current value.',
-        },
-        {
-          q: 'How is real-estate history estimated?',
-          a: 'Zillow exposes no Zestimate history, so where you haven’t entered your own values we use the Zillow Home Value Index (ZHVI) for the property’s ZIP, scaled so its latest point matches the current Zestimate. Manually-entered Zestimate history always takes precedence. Points are interpolated and held flat before the first / after the last.',
-        },
-        {
-          q: 'How is my mortgage balance figured?',
-          a: 'When you enter the loan principal, rate, and start date, the balance is computed from a standard amortization schedule server-side instead of being entered by hand. Real-estate value counts as Zestimate minus mortgage balance.',
         },
         {
           q: 'What about manually-added assets?',
@@ -116,7 +108,7 @@ function buildFaq(meta: AssumptionsMeta | null): Record<View, PageFaqContent> {
         },
         {
           q: 'How is "recurring" decided?',
-          a: 'Fixed commitments (mortgage, bills) always surface. Flexible items must appear in at least two distinct months and pass a subscription-quality filter (consistent merchant and amount) before they’re counted as recurring — so one-off purchases don’t show up.',
+          a: 'Fixed commitments (rent, bills) always surface. Flexible items must appear in at least two distinct months and pass a subscription-quality filter (consistent merchant and amount) before they’re counted as recurring — so one-off purchases don’t show up.',
         },
         {
           q: 'How is the monthly amount for a recurring item computed?',
@@ -146,7 +138,7 @@ function buildFaq(meta: AssumptionsMeta | null): Record<View, PageFaqContent> {
       items: [
         {
           q: 'How is the projection computed?',
-          a: `It runs a ${MONTE_CARLO_RUNS}-path Monte Carlo. Investment returns are sampled each year from your expected return ± volatility (a normal draw); income, spending, and real-estate growth are deterministic. The shaded band is the 10–90% range of outcomes and the line is the median.`,
+          a: `It runs a ${MONTE_CARLO_RUNS}-path Monte Carlo. Investment returns are sampled each year from your expected return ± volatility (a normal draw); income and spending are deterministic. The shaded band is the 10–90% range of outcomes and the line is the median.`,
         },
         {
           q: 'Are the dollar figures in today’s or future money?',
@@ -162,7 +154,7 @@ function buildFaq(meta: AssumptionsMeta | null): Record<View, PageFaqContent> {
         },
         {
           q: 'What does "success probability" mean?',
-          a: `It’s the share of the ${MONTE_CARLO_RUNS} simulated futures in which your investable assets never hit $0 through your plan horizon. Real-estate equity isn’t counted toward solvency.`,
+          a: `It’s the share of the ${MONTE_CARLO_RUNS} simulated futures in which your investable assets never hit $0 through your plan horizon.`,
         },
       ],
     },

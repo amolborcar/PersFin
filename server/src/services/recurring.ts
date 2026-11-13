@@ -3,18 +3,13 @@ import { getCategorizedTransactions, getCategoryLabeler } from './budget.js';
 
 // Fixed/committed bills (vs. flexible spend) and inflows to skip, in the new
 // taxonomy. Category resolution is reused from budget.ts so the two stay in sync.
-const FIXED_CATEGORIES = new Set(['Mortgage', 'Rent', 'Gas & Electric', 'Water', 'Internet & Phone', 'Insurance']);
+const FIXED_CATEGORIES = new Set(['Rent', 'Gas & Electric', 'Water', 'Internet & Phone', 'Insurance']);
 // Income and internal money movement never count as recurring spend. Mirrors
 // budget.ts's EXCLUDED_CATEGORIES — a Credit Card Payment is moving money to pay a
 // card, not a recurring bill, and counting it double-counts the card's own
 // itemized purchases (which already surface per-merchant here).
 const SKIP_CATEGORIES = new Set(['Paychecks', 'Other Income', 'Dividends & Capital Gains', 'Transfers', 'Credit Card Payment']);
 
-// Housing carry — mortgage payments and HOA dues — is surfaced in the Budget
-// housing-carry breakdown (interest vs principal, tax, insurance, HOA), so listing
-// it here too would double-count it. Excluded from recurring costs entirely.
-const EXCLUDED_FROM_RECURRING = new Set(['Mortgage']);
-const HOA_RE = /\bhoa\b|home ?owners?(?:'| )?\s*assoc|homeowners? association/i;
 
 // ── Flexible-recurring scope ─────────────────────────────────────────────────
 // This page exists to surface *optimizable* recurring fees — subscriptions,
@@ -53,7 +48,7 @@ const RECURRING_PRONE_CATEGORIES = new Set<string>([...FIXED_CATEGORIES, ...FLEX
 // recurring?" — bills/services that are almost never genuine one-offs. Excludes
 // the flexible categories that are commonly one-offs (Entertainment, Charity).
 const LIKELY_BILL_CATEGORIES = new Set<string>([
-  'Mortgage', 'Rent', 'Gas & Electric', 'Water', 'Internet & Phone', 'Insurance',
+  'Rent', 'Gas & Electric', 'Water', 'Internet & Phone', 'Insurance',
   'Subscriptions', 'Fitness', 'Child Care', 'Auto Payment', 'Home Services',
 ]);
 
@@ -128,7 +123,7 @@ export interface RecurringItem {
   lastAmount: number;
   occurrences: number;    // distinct months
   lastDate: string;
-  isFixed: boolean;       // true = mortgage / committed bill; false = flexible/cancellable
+  isFixed: boolean;       // true = rent / committed bill; false = flexible/cancellable
   manual?: boolean;       // true = user-added (not auto-detected from transactions)
   annual?: boolean;       // true = billed yearly; monthlyAvg is the amortized (÷12) figure
   edited?: boolean;       // true = monthlyAvg is a user-entered override, not the detected value
@@ -410,7 +405,7 @@ const recentTxns = (txns: RecurringTxn[]): RecurringTxn[] =>
 
 // Build the per-merchant billing groups from the SAME merged + deduped +
 // categorized ledger the Budget view uses, so imported-document transactions
-// (utilities, pool/maid/landscaping, etc.) — not just SimpleFIN feeds — feed
+// (utilities, pool/maid/landscaping, etc.) — not just bank-feed rows — feed
 // recurring detection. Categories are canonical and already honor every
 // txn/base/smart rule the user has set.
 async function loadContext(): Promise<RecurringContext> {
@@ -440,9 +435,6 @@ async function loadContext(): Promise<RecurringContext> {
   for (const t of raw) {
     const cat = t.category; // canonical, final (already resolved against all rules)
     if (SKIP_CATEGORIES.has(cat)) continue;
-    // Mortgage payments and HOA dues live in the housing-carry breakdown, not here.
-    if (EXCLUDED_FROM_RECURRING.has(cat)) continue;
-    if (HOA_RE.test(t.payee) || HOA_RE.test(t.description ?? '')) continue;
 
     const mk = t.merchant;
     const date = t.date;

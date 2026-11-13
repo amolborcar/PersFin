@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { categorize } from '../util/categorize.js';
 import { runMigrations } from './migrations.js';
+import { initCategoryFile, setCategoryDbProvider } from '../services/categoryFile.js';
 
 // DB_PATH can be overridden via env (e.g. to point at a Docker volume mount).
 // Falls back to project-root-relative path so the dev workflow is unchanged.
@@ -35,6 +36,11 @@ export function closeDb(): void {
 function migrate(db: Database.Database) {
   runMigrations(db);
   perBootMaintenance(db);
+  // The personal category file (data/categories.json) is the source of truth for
+  // the category list; budget_categories is its cache. Watched for edits except
+  // under the test runner.
+  setCategoryDbProvider(getDb);
+  initCategoryFile(db, DB_PATH, { watch: !process.env.VITEST });
 }
 
 // Housekeeping that intentionally runs on EVERY boot (not once per schema

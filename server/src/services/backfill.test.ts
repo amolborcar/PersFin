@@ -35,8 +35,8 @@ afterEach(() => {
 });
 
 const putSnapshot = (date: string, nw: number) =>
-  db.prepare(`INSERT INTO net_worth_snapshots (date, accounts_total, real_estate_total, net_worth)
-              VALUES (?, ?, 0, ?)`).run(date, nw, nw);
+  db.prepare(`INSERT INTO net_worth_snapshots (date, accounts_total, net_worth)
+              VALUES (?, ?, ?)`).run(date, nw, nw);
 
 const netWorthOn = (date: string) =>
   (db.prepare('SELECT net_worth AS n FROM net_worth_snapshots WHERE date = ?').get(date) as { n: number } | undefined)?.n;
@@ -89,24 +89,5 @@ describe('backfillHistory', () => {
     expect(await backfillHistory({ onlyMissing: true })).toBe(10);
     expect(countSnapshots()).toBe(before + 10);
     expect(netWorthOn('2025-01-05')).toBe(1000);
-  });
-  // ZHVI is a ZIP-wide median, only meaningful once scaled to the home's own
-  // Zestimate. With no Zestimate the live snapshot counts the home as 0
-  // (0 − balance); backfill must agree rather than book the raw median.
-  it('does not book the raw ZIP median for a property with no Zestimate', async () => {
-    db.prepare(`INSERT INTO properties (address, zestimate, mortgage_balance) VALUES ('1 Elm St, 90210', NULL, 100000)`).run();
-    vi.doMock('./zhvi.js', () => ({
-      fetchZhviHistories: async (addrs: string[]) => addrs.map(() => [
-        { date: '2020-01-01', value: 800000 },
-        { date: '2030-01-01', value: 900000 },
-      ]),
-    }));
-    vi.resetModules();
-    const bf = (await import('./backfill.js')).backfillHistory;
-    await bf();
-    vi.doUnmock('./zhvi.js');
-    (await import('../db/schema.js')).closeDb();
-    // accounts 1000 + (0 − 100000 mortgage), not + 800000ish
-    expect(netWorthOn(inWindow)).toBe(1000 - 100000);
   });
 });
