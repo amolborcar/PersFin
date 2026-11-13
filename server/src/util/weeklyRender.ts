@@ -148,3 +148,54 @@ export function renderWeeklyText(m: WeeklyModel): string {
   if (m.review.week > 0) lines.push(`${m.review.week} transaction${m.review.week === 1 ? '' : 's'} to review.`);
   return lines.join('\n');
 }
+
+// --- privacy levels for email and push (services/delivery.ts) --------------------
+// full    the whole report (category names, amounts, recurring payees)
+// totals  the week's total, its comparisons, and counts — no category names,
+//         merchants or transactions
+// notice  only that the report is ready, with a link to it in the app
+export type PrivacyLevel = 'full' | 'totals' | 'notice';
+export const PRIVACY_LEVELS: PrivacyLevel[] = ['full', 'totals', 'notice'];
+
+export function weeklySubject(m: WeeklyModel, level: PrivacyLevel): string {
+  return level === 'notice'
+    ? `PersFin · Your report for the week of ${weekLabel(m)} is ready`
+    : `PersFin · Week of ${weekLabel(m)}: ${fmtMoney(m.total)} spent`;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+//   Week of Nov 9 – 15, 2026: spent $612 (−12% vs last week; 8-week avg $700).
+//   2 categories over budget, 1 at risk.
+//   3 transactions to review.
+export function renderWeeklyTotalsText(m: WeeklyModel): string {
+  const lines = [renderWeeklyText(m).split('\n')[0]];
+  const over = m.categories.filter(c => c.status === 'over').length;
+  const risk = m.categories.filter(c => c.status === 'at-risk').length;
+  if (over || risk) lines.push(`${plural(over, 'category', 'categories')} over budget, ${risk} at risk.`);
+  if (m.review.week > 0) lines.push(`${plural(m.review.week, 'transaction', 'transactions')} to review.`);
+  return lines.join('\n');
+}
+
+export function renderWeeklyNoticeText(m: WeeklyModel): string {
+  return `Your PersFin report for the week of ${weekLabel(m)} is ready.`;
+}
+
+// A short email for the 'totals' and 'notice' levels: the same card style as
+// the full report, with the text above and a link to the full report.
+export function renderWeeklyBriefHtml(m: WeeklyModel, level: 'totals' | 'notice', opts: { reportUrl: string }): string {
+  const lines = (level === 'totals' ? renderWeeklyTotalsText(m) : renderWeeklyNoticeText(m)).split('\n');
+  const body = lines.map((l, i) => `<p style="margin:${i ? 6 : 0}px 0 0;font-size:${i ? 14 : 16}px;line-height:1.5;color:${i ? C.muted : C.ink};">${esc(l)}</p>`).join('');
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PersFin · Week of ${esc(weekLabel(m))}</title></head>
+<body style="margin:0;padding:0;background:${C.bg};font-family:${FONT};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg};"><tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:${C.card};border:1px solid ${C.rule};border-radius:12px;">
+<tr><td style="padding:24px;">
+<p style="margin:0 0 12px;font-size:13px;color:${C.muted};">PersFin · weekly spending</p>
+${body}
+<p style="margin:16px 0 0;font-size:14px;"><a href="${esc(opts.reportUrl)}" style="color:${C.accent};">Open the full report in PersFin →</a></p>
+</td></tr></table></td></tr></table>
+</body></html>`;
+}

@@ -9,7 +9,7 @@ import { renderWeeklyHtml, renderWeeklyText } from '../util/weeklyRender.js';
 
 // The weekly spending report (Monday–Sunday). This module computes its figures
 // and stores each rendered report in `weekly_reports`; sending it (email, push)
-// is a separate step.
+// is services/delivery.ts.
 //
 // Spending follows the budget's rules exactly: income categories and internal
 // money movement (Transfers, and Credit Card Payment in months where the card's
@@ -182,7 +182,7 @@ export function summaryPrompt(m: WeeklyModel): string {
 }
 
 // --- generate + store ----------------------------------------------------------
-export interface StoredWeeklyReport { key: string; start: string; end: string; total: number; generatedAt: string }
+export interface StoredWeeklyReport { key: string; start: string; end: string; total: number; generatedAt: string; emailSentAt: string | null; pushSentAt: string | null }
 
 export async function generateWeeklyReport(opts: { week?: string; now?: Date; ai?: boolean; runner?: ClaudeRunner; appUrl?: string } = {}): Promise<WeeklyModel> {
   const now = opts.now ?? new Date();
@@ -212,7 +212,8 @@ export async function generateWeeklyReport(opts: { week?: string; now?: Date; ai
 }
 
 export function listWeeklyReports(limit = 26): StoredWeeklyReport[] {
-  return getDb().prepare(`SELECT week_key AS key, week_start AS start, week_end AS end, total, generated_at AS generatedAt
+  return getDb().prepare(`SELECT week_key AS key, week_start AS start, week_end AS end, total, generated_at AS generatedAt,
+    email_sent_at AS emailSentAt, push_sent_at AS pushSentAt
     FROM weekly_reports ORDER BY week_key DESC LIMIT ?`).all(limit) as StoredWeeklyReport[];
 }
 

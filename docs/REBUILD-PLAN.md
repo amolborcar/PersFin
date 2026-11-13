@@ -20,7 +20,8 @@ Open PRs against `amolborcar/PersFin` only.
 | 5 AI categorization | Done. Build passes; tests pass (server 393, client 143, desktop 6). Not yet run against the real Claude Code. |
 | 6 Weekly report content | Done. Build passes; tests pass (server 411, client 143, desktop 6). |
 | Rename to PersFin | Done (Phase 9 items 2 and 5, done early). Old data moves once on first start; see "Rename" below. |
-| 7–9 | Not started (except the rename) |
+| 7 Delivery | Done in code; email (local STARTTLS server) and push (local stand-in for ntfy) checked end to end. Not yet run with a real mail account or ntfy on the Mac mini. Build passes; tests pass (server 430, client 143, desktop 6). |
+| 8–9 | Not started (except the rename) |
 
 Update this table at the end of each phase.
 
@@ -38,11 +39,12 @@ Update this table at the end of each phase.
 
 ## Known limits and exceptions
 
-- **External channels.** Weekly email and push send report data to the mail
-  provider and to Apple's push service. Both are opt-in. Each channel has a
-  privacy level: `full`, `totals only`, or `notice only`. Update the hard
-  constraints in `CLAUDE.md` to name these two channels as the only allowed
-  exceptions.
+- **External channels.** Weekly email sends report data to the owner's mail
+  provider. Push goes to the owner's own ntfy server on the Mac mini; for iOS,
+  ntfy.sh and Apple's push service receive only a message ID. Both are opt-in.
+  Each channel has a privacy level: `full`, `totals` (totals only), or
+  `notice` (notice only). `CLAUDE.md` names these two channels as the only
+  allowed exceptions.
 - **AI processing.** AI categorization sends payee, description, amount, date,
   and account type to Anthropic through the local Claude Code login. It does not
   send balances or account numbers.
@@ -337,6 +339,36 @@ Implementation (done):
    sent.
 5. Update `CLAUDE.md` hard constraints.
 6. Tests: idempotency, missed-week catch-up, message per privacy level.
+
+Implementation (done):
+- `services/delivery.ts`: settings, senders, messages, and `runWeeklyDelivery`.
+  - Keys file (through `keys.ts` `setEnvVars`): `SMTP_HOST`, `SMTP_PORT`,
+    `SMTP_USER`, `SMTP_PASS`, `REPORT_EMAIL_TO` (1–5 addresses), `SMTP_FROM`,
+    `NTFY_URL`, `NTFY_TOKEN`, `PERSFIN_PUBLIC_URL`. Passwords and tokens are
+    write-only in the API.
+  - Privacy level per channel in `meta` (`delivery_<channel>_level`, default
+    off). A channel can be turned on only after its settings are saved.
+  - Email: nodemailer 10, TLS on 465, `requireTLS` (STARTTLS) on other ports,
+    TLS 1.2+, file and URL access off.
+  - Push: ntfy JSON publishing (keeps non-ASCII text intact). Plain http only
+    for loopback, `*.ts.net` and Tailscale addresses.
+  - Levels (`util/weeklyRender.ts`): `full` = the stored report; `totals` =
+    the total, comparisons and counts, no names; `notice` = "ready" and a link.
+- Due week (`util/weekWindow.ts` `dueWeek`): the current week from Sunday
+  19:00 (`WEEKLY_SEND_HOUR`), else the last finished week, so a catch-up on
+  Sunday morning never sends a partial week.
+- Once per week and channel: `weekly_reports.email_sent_at` / `push_sent_at`.
+  The report is rebuilt before the week's first send; later sends reuse it.
+  Runs are serialized, so overlapping triggers send once. A failed channel
+  stays unsent.
+- Triggers: job `weekly-report` (keyed by the due week; launchd agent
+  `com.persfin.weekly-report`, Sunday 19:00; node-cron in dev), a catch-up in
+  the daily sync, and a catch-up on server start. The desktop app writes
+  missing agents for an existing background install.
+- Routes `/api/delivery` (settings, levels, test, send). Setup → Report
+  delivery; Setup → Weekly reports shows which weeks were emailed and pushed.
+- Mac mini steps (Gmail/iCloud app passwords, ntfy install): `DESKTOP.md` →
+  "Weekly report by email and push".
 
 ## Phase 8: Visualizations
 

@@ -3,9 +3,10 @@ import { runJob, JOB_NAMES, type JobName } from '../services/jobs.js';
 
 const router = Router();
 
-// Trigger a scheduled job: POST /api/jobs/daily-sync or /api/jobs/snapshot.
+// Trigger a scheduled job: POST /api/jobs/daily-sync, /snapshot or /weekly-report.
 // The launchd agents call this with curl (no Origin header, Host 127.0.0.1, so
-// the local-origin guard lets it through). Idempotent per local day — a repeat
+// the local-origin guard lets it through). Idempotent per day (per week for
+// weekly-report) — a repeat
 // returns status "skipped"; ?force=1 runs it again. Responds when the job ends.
 router.post('/:name', async (req: Request, res: Response) => {
   const name = req.params.name as JobName;

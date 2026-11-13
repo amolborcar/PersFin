@@ -170,7 +170,7 @@ describe('generateWeeklyReport (stored)', () => {
     expect(m.week.key).toBe('2026-11-09');
     expect(m.total).toBe(64.2);
     expect(m.priorWeek).toBe(30);
-    expect(weekly.listWeeklyReports()).toEqual([{ key: '2026-11-09', start: '2026-11-09', end: '2026-11-15', total: 64.2, generatedAt: m.generatedAt }]);
+    expect(weekly.listWeeklyReports()).toEqual([{ key: '2026-11-09', start: '2026-11-09', end: '2026-11-15', total: 64.2, generatedAt: m.generatedAt, emailSentAt: null, pushSentAt: null }]);
     const stored = weekly.getStoredWeeklyReport('2026-11-09')!;
     expect(stored.html).toContain('$64');
     expect(stored.text).toMatch(/^Week of Nov 9 – Nov 15, 2026: spent \$64/);

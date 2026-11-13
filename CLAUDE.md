@@ -97,7 +97,12 @@ CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`. Keep it gre
 ## Hard constraints (do not violate)
 
 - **Privacy first.** Never route financial data to an external service. The app is
-  designed to keep everything local.
+  designed to keep everything local. The only exceptions are the two weekly
+  report channels in `services/delivery.ts`, both off until the owner turns them
+  on: email through the owner's own SMTP account (TLS required) and push through
+  the owner's own ntfy server (https, or http only on loopback/Tailscale). Each
+  has a privacy level (`full`, `totals`, `notice`); keep the lower levels free
+  of category, merchant and payee names (`notice`: no amounts either).
 - **The AI assistant** (`server/src/services/assistant.ts`) shells out to a
   **locally installed Claude Code binary** in headless mode — it does *not* use a
   paid API key. Every spawn uses the shared args in `services/assistant.ts`:

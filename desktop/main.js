@@ -285,6 +285,8 @@ async function ensureServer() {
   const cfg = loadConfig();
   if (backgroundEnabled()) {
     try {
+      // A newer version can add an agent (e.g. weekly-report); write all again.
+      if (launchd.ALL_LABELS.some(l => !fs.existsSync(agentFile(l)))) installBackground(cfg);
       ensureBackgroundLoaded();
       await waitForServer(cfg.port || 3001, 20000);
       currentPort = cfg.port || 3001;

@@ -51,16 +51,19 @@ Download the `PersFin-macos` artifact from the run.
 ## Keep running in the background (always on)
 
 In the app: **Setup (⚙) → Sync → Keep running in the background**. This installs
-three launchd agents in `~/Library/LaunchAgents/` (no admin password needed):
+four launchd agents in `~/Library/LaunchAgents/` (no admin password needed):
 
 | Agent | What it does |
 |---|---|
 | `com.persfin.server` | Runs the PersFin server at login and restarts it if it stops. Listens on `127.0.0.1` and your Tailscale address only. |
 | `com.persfin.daily-sync` | 06:00 every day: Plaid sync, then history repair. |
 | `com.persfin.snapshot` | 00:00 every day: net-worth snapshot. |
+| `com.persfin.weekly-report` | Sunday 19:00: build the weekly report and send it by email and push (when turned on). |
 
 If the Mac is asleep at a scheduled time, launchd runs the job once when it
-wakes; the server runs each job at most once per day. Keep the Mac awake:
+wakes; the server runs each job at most once per day (the weekly report once
+per week). If a weekly send fails, the next daily sync and the next server
+start send it again. Keep the Mac awake:
 System Settings → Energy → "Prevent automatic sleeping when the display is off".
 Setup shows a warning when system sleep is on. PersFin never changes power settings.
 
@@ -78,7 +81,93 @@ launchctl print gui/$(id -u)/com.persfin.server | head -20
 curl -s -X POST http://127.0.0.1:3001/api/jobs/snapshot
 ```
 
-Logs: `~/Library/Logs/PersFin/` (`server.log`, `server.err.log`, `daily-sync.log`, `snapshot.log`).
+Logs: `~/Library/Logs/PersFin/` (`server.log`, `server.err.log`, `daily-sync.log`, `snapshot.log`, `weekly-report.log`).
+
+An install made before the weekly report existed gets the new agent the next
+time the app opens.
+
+## Weekly report by email and push
+
+Set up in **Setup (⚙) → Report delivery**. Both channels are off until you
+choose a privacy level for each:
+
+| Level | What is sent |
+|---|---|
+| Full report | The whole report: categories, amounts, recurring charges. |
+| Totals only | The week's total, its comparisons, and how many categories are over budget or at risk. No category or merchant names. |
+| Notice only | "Your report is ready", with a link. No amounts. |
+
+**App address for links.** Enter the Mac mini's Tailscale address, for example
+`http://mac-mini.tail1234.ts.net:3001` (find the name in the Tailscale app, or
+run `tailscale status`). Links in the report open this address, so they work
+on your phone when Tailscale is on. Without it, links point at `localhost`.
+
+**Email** uses your own mail account over SMTP. The connection is always
+encrypted: TLS on port 465, STARTTLS on other ports (the send fails if the
+server does not offer it). Gmail and iCloud need an app password:
+
+| Provider | Server | Port | Password |
+|---|---|---|---|
+| Gmail | `smtp.gmail.com` | 465 | Google account → Security → App passwords |
+| iCloud | `smtp.mail.me.com` | 587 | appleid.apple.com → App-Specific Passwords |
+
+The password is saved in the keys file (`persfin.env`), like the Plaid keys.
+Click **Send test email** to check the settings.
+
+**Push** uses ntfy (https://ntfy.sh), self-hosted on the Mac mini:
+
+1. Install it:
+
+   ```bash
+   brew install ntfy
+   ```
+
+2. Write its config file (`server.yml`; `brew info ntfy` shows where the
+   Homebrew service reads it):
+
+   ```yaml
+   base-url: "http://mac-mini.tail1234.ts.net:2586"
+   listen-http: ":2586"
+   auth-file: "/opt/homebrew/var/lib/ntfy/user.db"
+   auth-default-access: "deny-all"
+   cache-file: "/opt/homebrew/var/lib/ntfy/cache.db"
+   # Needed for instant notifications on iPhone: ntfy.sh receives only a
+   # message ID and wakes the phone, which then fetches the message from
+   # the Mac mini.
+   upstream-base-url: "https://ntfy.sh"
+   ```
+
+3. Start it at login, then make a user and an access token:
+
+   ```bash
+   brew services start ntfy
+   ```
+
+   ```bash
+   ntfy user add --role=user persfin
+   ```
+
+   ```bash
+   ntfy access persfin persfin rw
+   ```
+
+   ```bash
+   ntfy token add persfin
+   ```
+
+4. In PersFin, enter the topic URL `http://mac-mini.tail1234.ts.net:2586/persfin`
+   and the token, then click **Send test push**.
+5. On the phone, install the ntfy app, add the server
+   `http://mac-mini.tail1234.ts.net:2586` with the `persfin` user, and
+   subscribe to the topic `persfin`.
+
+Plain `http://` is allowed only for this Mac and the Tailscale network
+(`*.ts.net`, `100.64.0.0/10`), where Tailscale encrypts the traffic. Any other
+ntfy server must use `https://`.
+
+**Send now.** "Send the week of … now" sends the due week again on each
+channel that is on. The list under Setup → Weekly reports shows which weeks
+were emailed and pushed.
 
 ## Choosing where data lives
 

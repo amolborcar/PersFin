@@ -48,3 +48,15 @@ export function monthProgress(day: string): { monthKey: string; daysInMonth: num
     daysElapsed: d.getDate(),
   };
 }
+
+// The hour (local) on Sunday when the weekly report is sent; launchd and
+// node-cron trigger the weekly-report job then.
+export const WEEKLY_SEND_HOUR = 19;
+
+// The week whose report is due at `now`: the current week from Sunday
+// WEEKLY_SEND_HOUR on, otherwise the last week that has ended. Unlike
+// reportWeek, a catch-up on Sunday morning never sends a week that is not over.
+export function dueWeek(now: Date = new Date()): WeekWindow {
+  const w = weekContaining(isoDay(now));
+  return w.end === isoDay(now) && now.getHours() >= WEEKLY_SEND_HOUR ? w : shiftWeek(w, -1);
+}

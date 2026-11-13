@@ -7,6 +7,7 @@ import { usePersistentState } from '../hooks/usePersistentState.ts';
 import { useTheme } from '../hooks/useTheme.ts';
 import { THEMES } from '../lib/theme.ts';
 import SecContactEmail, { SEC_PRIVACY_NOTE } from './SecContactEmail.tsx';
+import ReportDelivery, { type DeliveryStatus } from './ReportDelivery.tsx';
 
 // Other parts of the app (the dashboard's data hooks) listen for this so they
 // re-pull after Setup changes something — no full page reload needed.
@@ -380,7 +381,7 @@ function SleepRow() {
 // ---- Weekly reports -------------------------------------------------------------
 // The weekly spending report (Monday–Sunday): build this week's now, open past
 // ones, and the optional AI summary. Sending it by email/push is set up apart.
-interface WeeklyList { reports: { key: string; start: string; end: string; total: number; generatedAt: string }[]; currentWeek: string; aiSummary: boolean }
+interface WeeklyList { reports: { key: string; start: string; end: string; total: number; generatedAt: string; emailSentAt: string | null; pushSentAt: string | null }[]; currentWeek: string; aiSummary: boolean }
 function WeeklyReportsRow() {
   const [open, setOpen] = useState(false);
   const { data, refetch } = useApi<WeeklyList>('/api/report/weekly');
@@ -427,11 +428,28 @@ function WeeklyReportsRow() {
               <a href={`/api/report/weekly/${r.key}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
                 Week of {fmtDate(r.start)}
               </a>
-              <span style={{ color: 'var(--muted)' }}>{money(r.total)}</span>
+              <span style={{ color: 'var(--muted)' }}>
+                {[r.emailSentAt && 'emailed', r.pushSentAt && 'pushed'].filter(Boolean).join(' · ')}
+                {(r.emailSentAt || r.pushSentAt) && ' · '}{money(r.total)}
+              </span>
             </li>
           ))}
         </ul>
       )}
+    </Row>
+  );
+}
+
+// ---- Report delivery ------------------------------------------------------------
+// Email (SMTP) and push (ntfy) for the weekly report; the form is ReportDelivery.
+function DeliveryRow() {
+  const [open, setOpen] = useState(false);
+  const { data } = useApi<DeliveryStatus>('/api/delivery');
+  const on = data ? (['email', 'push'] as const).filter(c => data[c].level !== 'off') : [];
+  return (
+    <Row icon={<IconMail />} title="Report delivery" expanded={open} onClick={() => setOpen(o => !o)}
+      subtitle={!data ? undefined : on.length ? `Weekly by ${on.join(' and ')}` : 'Off · email and push are not set up'}>
+      <ReportDelivery />
     </Row>
   );
 }
@@ -823,6 +841,7 @@ function SetupSections({ onChanged }: { onChanged: () => void }) {
           subtitle={busy === 'restore' ? 'Restoring…' : 'Replace current data with a saved backup file'}
           right={busy === 'restore' ? <Spinner /> : undefined} />
         <WeeklyReportsRow />
+        <DeliveryRow />
         <Row icon={<IconFile />} title="Quarterly report" href="/api/report/quarterly"
           subtitle={`${report?.quarterLabel ?? 'Latest completed quarter'} · ${report?.generatedAt
             ? `generated ${fmtDate(new Date(report.generatedAt))}` : 'not generated yet'}`}

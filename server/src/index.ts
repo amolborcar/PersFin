@@ -24,8 +24,11 @@ import dataRoutes from './routes/data.js';
 import testsRoutes from './routes/tests.js';
 import reportRoutes from './routes/report.js';
 import jobRoutes from './routes/jobs.js';
+import deliveryRoutes from './routes/delivery.js';
 import { catchUpHistory } from './services/historyCatchUp.js';
 import { runJob } from './services/jobs.js';
+import { runWeeklyDelivery } from './services/delivery.js';
+import { WEEKLY_SEND_HOUR } from './util/weekWindow.js';
 import { localOriginGuard } from './localOrigin.js';
 import { listenModeFromEnv, listenHosts, LOOPBACK_HOSTS } from './util/listen.js';
 
@@ -56,6 +59,7 @@ app.use('/api/data', dataRoutes);
 app.use('/api/tests', testsRoutes);
 app.use('/api/report', reportRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/delivery', deliveryRoutes);
 
 // In production the built client is served from the same port.
 // In dev, Vite runs on its own port and proxies /api here instead.
@@ -84,6 +88,10 @@ if (process.env.PERSFIN_SCHEDULER !== 'launchd') {
   cron.schedule('0 0 * * *', () => {
     runJob('snapshot').catch(err => console.error('[cron] snapshot failed:', err));
   });
+  // Weekly report: Sunday evening (services/delivery.ts).
+  cron.schedule(`0 ${WEEKLY_SEND_HOUR} * * 0`, () => {
+    runJob('weekly-report').catch(err => console.error('[cron] weekly-report failed:', err));
+  });
 }
 
 // A stray rejected promise (e.g. a fire-and-forget provider call) should be logged,
@@ -97,6 +105,9 @@ function onListening() {
   // Catch up on history a scheduled run missed while offline. Fire-and-forget
   // so a slow or failing provider can't hold up serving.
   catchUpHistory().catch(err => console.error('[startup] history catch-up failed:', err));
+  // Send the due weekly report on any channel that has not sent it (the Mac was
+  // off on Sunday evening, or a send failed). Does nothing when all are off.
+  runWeeklyDelivery().catch(err => console.error('[startup] weekly delivery catch-up failed:', err));
 }
 
 const listenMode = listenModeFromEnv(process.env.PERSFIN_LISTEN);

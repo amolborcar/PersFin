@@ -17,7 +17,7 @@ const byLabel = (agents, label) => agents.find(a => a.label === label);
 
 test('builds the server agent and one agent per scheduled job', () => {
   const agents = buildAgents({ ...base, packaged: true });
-  assert.deepEqual(agents.map(a => a.label), [LABELS.server, LABELS.dailySync, LABELS.snapshot]);
+  assert.deepEqual(agents.map(a => a.label), [LABELS.server, LABELS.dailySync, LABELS.snapshot, LABELS.weeklyReport]);
   for (const a of agents) assert.equal(a.filename, `${a.label}.plist`);
 });
 
@@ -52,6 +52,10 @@ test('job agents POST the job endpoint on the configured port at the scheduled t
   const snap = byLabel(agents, LABELS.snapshot).xml;
   assert.match(snap, /\/api\/jobs\/snapshot<\/string>/);
   assert.match(snap, /<key>Hour<\/key>\s*<integer>0<\/integer>/);
+  assert.doesNotMatch(snap, /Weekday/);
+  const weekly = byLabel(agents, LABELS.weeklyReport).xml;
+  assert.match(weekly, /\/api\/jobs\/weekly-report<\/string>/);
+  assert.match(weekly, /<key>StartCalendarInterval<\/key>\s*<dict>\s*<key>Weekday<\/key>\s*<integer>0<\/integer>\s*<key>Hour<\/key>\s*<integer>19<\/integer>/);
 });
 
 test('escapes XML special characters in paths', () => {

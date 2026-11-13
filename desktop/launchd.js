@@ -8,9 +8,11 @@
 //                          stops (KeepAlive). Listens on loopback + Tailscale.
 //   com.persfin.daily-sync  06:00 every day: POST /api/jobs/daily-sync
 //   com.persfin.snapshot    00:00 every day: POST /api/jobs/snapshot
+//   com.persfin.weekly-report  Sunday 19:00: POST /api/jobs/weekly-report
 //
 // The job agents use StartCalendarInterval, so a job missed while the Mac slept
-// runs once when it wakes. The server makes every job idempotent per day.
+// runs once when it wakes. The server makes every job idempotent per day (per
+// report week for weekly-report).
 
 const path = require('path');
 
@@ -18,6 +20,7 @@ const LABELS = {
   server: 'com.persfin.server',
   dailySync: 'com.persfin.daily-sync',
   snapshot: 'com.persfin.snapshot',
+  weeklyReport: 'com.persfin.weekly-report',
 };
 const ALL_LABELS = Object.values(LABELS);
 
@@ -28,6 +31,8 @@ const AGENT_PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sb
 const JOBS = [
   { label: LABELS.dailySync, job: 'daily-sync', hour: 6, minute: 0 },
   { label: LABELS.snapshot, job: 'snapshot', hour: 0, minute: 0 },
+  // Weekday 0 = Sunday. The hour matches WEEKLY_SEND_HOUR in server/src/util/weekWindow.ts.
+  { label: LABELS.weeklyReport, job: 'weekly-report', weekday: 0, hour: 19, minute: 0 },
 ];
 
 // --- plist serialization ---------------------------------------------------
@@ -119,7 +124,7 @@ function buildAgents(opts) {
       '/usr/bin/curl', '--silent', '--show-error', '--fail',
       '--max-time', '900', '-X', 'POST', `http://127.0.0.1:${port}/api/jobs/${j.job}`,
     ],
-    StartCalendarInterval: { Hour: j.hour, Minute: j.minute },
+    StartCalendarInterval: { ...(j.weekday !== undefined ? { Weekday: j.weekday } : {}), Hour: j.hour, Minute: j.minute },
     StandardOutPath: path.join(logDir, `${j.job}.log`),
     StandardErrorPath: path.join(logDir, `${j.job}.log`),
   }));

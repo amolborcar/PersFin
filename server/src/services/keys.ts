@@ -49,11 +49,11 @@ export function getKeyStatus() {
 // A value containing a line break would write extra KEY=VALUE lines into the
 // .env file (e.g. "x\nCLAUDE_BIN=/tmp/evil"), so those are refused up front —
 // before touching process.env or the file. NUL is rejected for the same reason.
-function assertSafeEnvText(label: string, text: string): void {
+export function assertSafeEnvText(label: string, text: string): void {
   if (/[\r\n\0]/.test(text)) throw new KeyError(`${label} must not contain line breaks or control characters.`);
 }
 
-function setEnvVars(updates: Record<string, string>): void {
+export function setEnvVars(updates: Record<string, string>): void {
   for (const [k, v] of Object.entries(updates)) {
     assertSafeEnvText(k, k);
     assertSafeEnvText(k, v);
@@ -131,7 +131,7 @@ export function saveClaudeToken(token: string): void {
 // Deliberately simple: one @, no whitespace/quotes/brackets, a dotted domain.
 // SEC only needs a plausible contact; this mainly keeps junk (and anything that
 // could break the User-Agent header or the env file) out.
-const EMAIL_RE = /^[^\s@<>"(),;:\\]+@[^\s@<>"(),;:\\]+\.[^\s@<>"(),;:\\]+$/;
+export const EMAIL_RE = /^[^\s@<>"(),;:\\]+@[^\s@<>"(),;:\\]+\.[^\s@<>"(),;:\\]+$/;
 
 // Persist the contact email sent to SEC EDGAR in the User-Agent. An empty value
 // clears it (saved as a blank line, which edgarUserAgent() treats as unset).
