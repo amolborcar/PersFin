@@ -147,6 +147,12 @@ for (let back = 14; back >= 0; back--) {
   // Quarterly dividend into brokerage
   if (m % 3 === 2) on(15, () => tx(brokerage, dayOf(y, m, 15), jitter(180, 0.2), 'VANGUARD DIVIDEND REINVEST'));
 
+  // A few merchants the built-in keyword rules don't recognize, so Quick review
+  // (and its AI suggestions) has something to show.
+  if (back <= 3) on(13, () => tx(card, dayOf(y, m, 13), -jitter(38, 0.3), 'NORTHSIDE PAWS'));
+  if (back <= 2) on(22, () => tx(card, dayOf(y, m, 22), -jitter(120, 0.2), 'KESTREL OUTFITTERS'));
+  if (back === 1) on(8, () => tx(card, dayOf(y, m, 8), -45.00, 'MIRA STUDIO LLC'));
+
   // Monthly credit-card payment from checking (excluded from spend/income)
   on(27, () => tx(checking, dayOf(y, m, 27), -jitter(2400, 0.2), 'CHASE CARD PAYMENT THANK YOU'));
 }

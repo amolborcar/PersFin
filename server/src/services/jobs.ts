@@ -2,6 +2,7 @@ import { getMeta, setMeta } from './meta.js';
 import { refreshAccountsAndSnapshot, takeSnapshot } from './netWorth.js';
 import { catchUpHistory } from './historyCatchUp.js';
 import { isDailySnapshotEnabled } from './data.js';
+import { categorizeWithAi, getAiSettings } from './aiCategorize.js';
 
 // Scheduled jobs, run by whichever scheduler is active: macOS launchd (the
 // always-on desktop setup — each job is a launchd agent that POSTs
@@ -50,13 +51,16 @@ export function makeJobRunner(
 
 export const runJob = makeJobRunner(
   {
-    // Accounts (Plaid), then snapshot, then repair history: an always-on server
+    // Accounts (Plaid), then snapshot, then repair history (an always-on server
     // may go months without a restart, and this is the hook that notices a gap
-    // left by downtime or a version stamp left by an upgrade.
+    // left by downtime or a version stamp left by an upgrade), then AI
+    // category suggestions for new uncategorized merchants.
     'daily-sync': async () => {
       console.log('[job] daily-sync: refreshing accounts...');
       await refreshAccountsAndSnapshot();
       await catchUpHistory().catch(err => console.error('[job] history catch-up failed:', err));
+      // Suggest categories for new uncategorized merchants (Setup in Quick review).
+      if (getAiSettings().daily) await categorizeWithAi().catch(err => console.error('[job] AI categorize failed:', err));
     },
     // Records current DB state so net-worth history stays continuous even on
     // days when no account refresh runs. The toggle lives in the DB (Setup).

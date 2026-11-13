@@ -22,8 +22,19 @@ interface ReviewGroup {
   merchant: string; payee: string; account: string;
   count: number; total: number; lastDate: string;
   suggested: string; suggestions: string[];
+  // A pending AI suggestion (also the starred first suggestion).
+  ai?: { category: string; confidence: number; reason: string };
   note: string; txns: ReviewTxn[];
 }
+interface AiSettings { daily: boolean; autoAccept: boolean; available: boolean }
+interface AiRunResult { sent: number; suggested: number; autoAccepted: number; unsure: number; remaining: number; error: string | null }
+const AI_ERRORS: Record<string, string> = {
+  'no-binary': 'Claude Code isn’t installed on this computer, so AI suggestions are off.',
+  'not-logged-in': 'Log in to Claude first (open the chat assistant, bottom right).',
+  timeout: 'Claude took too long — try again.',
+  aborted: 'Stopped.',
+  failed: 'Claude couldn’t answer — try again.',
+};
 // A possible-recurring suggestion (mirror of the server's RecurringSuggestion),
 // reviewed in the same wizard so "uncertain" covers both uncategorized spend and
 // maybe-recurring costs.
@@ -84,6 +95,10 @@ export default function ReviewWizard({ cats, groups, money, moneyCents, onClose,
   const [error, setError] = useState('');
   // What the user actually did, for the wrap-up line ("5 categorized, 2 skipped").
   const [stats, setStats] = useState({ categorized: 0, recurring: 0, skipped: 0 });
+  // AI suggestions (local Claude Code): settings, a run in progress, its outcome.
+  const [ai, setAi] = useState<AiSettings | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState('');
   const bump = (k: keyof typeof stats) => setStats(s => ({ ...s, [k]: s[k] + 1 }));
   const emoji = emojiMapFrom(groups);
   const catEmoji = (c: string) => emoji[c] ?? '🏷️';
@@ -107,8 +122,47 @@ export default function ReviewWizard({ cats, groups, money, moneyCents, onClose,
       setLoadError(true);
       setQueue([]);
     });
+    fetch('/api/budget/ai-settings').then(r => (r.ok ? r.json() : null)).then(d => { if (alive) setAi(d); }).catch(() => {});
     return () => { alive = false; };
   }, []);
+
+  // Ask Claude for categories for the merchants that have no suggestion yet,
+  // then reload the queue (auto-accepted merchants drop out of it).
+  async function askAi() {
+    if (aiBusy) return;
+    setAiBusy(true); setAiMsg('Asking Claude — this can take a minute…');
+    try {
+      const r = await fetch('/api/budget/ai-categorize', { method: 'POST' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json() as AiRunResult;
+      const parts = [
+        d.suggested && `${d.suggested} suggested`,
+        d.autoAccepted && `${d.autoAccepted} categorized automatically`,
+        d.unsure && `${d.unsure} unsure`,
+      ].filter(Boolean);
+      setAiMsg(d.error ? (AI_ERRORS[d.error] ?? 'AI suggestions failed.')
+        : parts.length ? `${parts.join(', ')}.${d.remaining ? ` ${d.remaining} still to ask.` : ''}`
+        : 'Nothing new to ask about.');
+      const rev = await fetch('/api/budget/review').then(x => x.json()) as { groups?: ReviewGroup[] };
+      setQueue(rev.groups ?? []); setIdx(0);
+      if (d.autoAccepted) onCategorized();
+    } catch {
+      setAiMsg('AI suggestions failed — check that the server is running.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function saveAiSettings(next: Partial<Pick<AiSettings, 'daily' | 'autoAccept'>>) {
+    const r = await fetch('/api/budget/ai-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
+    if (r.ok) setAi(await r.json());
+  }
+
+  // "Not this": hide the AI suggestion for this merchant (it isn't asked again).
+  async function rejectAi(g: ReviewGroup) {
+    await fetch('/api/budget/ai-suggestions/reject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ merchant: g.merchant }) });
+    setQueue(q => (q ?? []).map(x => (x.merchant === g.merchant ? { ...x, ai: undefined, suggested: x.suggested === g.ai?.category ? '' : x.suggested } : x)));
+  }
 
   // Esc closes the wizard — but not when it is meant for something layered on top
   // of it (the rule modal, a transaction's detail popup, an open category picker).
@@ -240,6 +294,27 @@ export default function ReviewWizard({ cats, groups, money, moneyCents, onClose,
           </div>
         )}
 
+        {/* AI suggestions: ask now, and the two settings. */}
+        {ai?.available && queue !== null && !loadError && (catCount > 0 || aiMsg) && (
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 16, fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn-ghost" disabled={aiBusy} onClick={askAi} style={{ fontSize: 12, padding: '5px 10px' }}
+                title="Sends each uncategorized merchant's name, bank descriptors, typical amount and account type — with your category list and hints — to Claude through your own login. No balances, account names or memos.">
+                {aiBusy ? '✨ Asking…' : '✨ Suggest categories with AI'}
+              </button>
+              <span style={{ display: 'flex', gap: 12, color: 'var(--muted)' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Ask for new merchants after the daily sync">
+                  <input type="checkbox" checked={ai.daily} onChange={e => saveAiSettings({ daily: e.target.checked })} style={{ width: 'auto' }} /> Daily
+                </label>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} title="Accept suggestions with 90% or more confidence automatically (makes a merchant rule)">
+                  <input type="checkbox" checked={ai.autoAccept} onChange={e => saveAiSettings({ autoAccept: e.target.checked })} style={{ width: 'auto' }} /> Auto-accept ≥ 90%
+                </label>
+              </span>
+            </div>
+            {aiMsg && <p role="status" style={{ marginTop: 6, color: 'var(--muted)' }}>{aiMsg}</p>}
+          </div>
+        )}
+
         {queue === null && <p style={{ color: 'var(--muted)', fontSize: 13, padding: '24px 0', textAlign: 'center' }}>Loading…</p>}
 
         {/* All caught up (either nothing to review, or we reached the end) */}
@@ -331,6 +406,19 @@ export default function ReviewWizard({ cats, groups, money, moneyCents, onClose,
 
 
             {error && <p role="alert" style={{ fontSize: 12, color: 'var(--red)', marginBottom: 10 }}>{error}</p>}
+            {cur.ai && (
+              <div style={{ border: '1px solid var(--accent)', background: 'var(--accent-dim)', borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>
+                <p style={{ fontSize: 13 }}>
+                  ✨ AI suggests <strong>{catEmoji(cur.ai.category)} {cur.ai.category}</strong>
+                  <span style={{ color: 'var(--muted)', marginLeft: 6 }}>{Math.round(cur.ai.confidence * 100)}%</span>
+                </p>
+                {cur.ai.reason && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{cur.ai.reason}</p>}
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button className="btn-primary" disabled={busy} onClick={() => assign(cur.ai!.category)} style={{ fontSize: 12, padding: '6px 12px' }}>Accept</button>
+                  <button className="btn-ghost" disabled={busy} onClick={() => rejectAi(cur)} style={{ fontSize: 12, padding: '6px 12px' }}>Not this</button>
+                </div>
+              </div>
+            )}
             <p style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Most likely</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
               {cur.suggestions.map(c => {

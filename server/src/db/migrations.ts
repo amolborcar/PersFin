@@ -472,6 +472,24 @@ function removeMortgageCategory(db: Db) {
   `);
 }
 
+// AI category suggestions (services/aiCategorize.ts), one per merchant in the
+// review queue. status: 'pending' (shown in Quick review), 'unsure' (the model
+// could not tell), 'auto' (accepted automatically — a merchant rule was made),
+// 'rejected' (the owner dismissed it). A merchant with a row is not sent again.
+function aiSuggestionsTable(db: Db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ai_suggestions (
+      merchant   TEXT PRIMARY KEY,   -- the review group's merchant key (what a rule targets)
+      category   TEXT NOT NULL,
+      confidence REAL NOT NULL,      -- 0..1, as reported by the model
+      reason     TEXT NOT NULL DEFAULT '',
+      model      TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+}
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'baseline', up: baseline },
   { version: 2, name: 'feed-transactions-table', up: feedTransactionsTable },
@@ -482,6 +500,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 7, name: 'remove-simplefin', up: removeSimpleFin },
   { version: 8, name: 'remove-real-estate', up: removeRealEstate },
   { version: 9, name: 'remove-mortgage-category', up: removeMortgageCategory },
+  { version: 10, name: 'ai-suggestions-table', up: aiSuggestionsTable },
 ];
 
 // Apply every migration newer than the database's user_version, each in its own

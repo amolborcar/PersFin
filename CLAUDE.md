@@ -102,7 +102,8 @@ CI (`.github/workflows/ci.yml`) runs on every PR and push to `main`. Keep it gre
   **locally installed Claude Code binary** in headless mode — it does *not* use a
   paid API key. Every spawn uses the shared args in `services/assistant.ts`:
   chat and document ingest may only `Read` inside their private temp dir
-  (`Read(./**)`), the report spawn gets no tools at all; shell/write/web tools are
+  (`Read(./**)`), the report and AI category-suggestion spawns get no tools at all
+  (`services/claudeRunner.ts`); shell/write/web tools are
   denied, user MCP servers are ignored, the prompt goes over stdin, and runs are
   killed on timeout / client disconnect. Preserve this isolation.
 - **No authentication layer exists.** The app is meant for LAN / Tailscale only.

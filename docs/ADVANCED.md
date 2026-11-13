@@ -140,6 +140,21 @@ shell / write / web tools are denied, your own MCP servers are ignored, and runs
 are killed on timeout or when you close the request. The model only sees the
 compact financial summary KevFin builds for it.
 
+### AI category suggestions
+
+In Budget → Quick review, **✨ Suggest categories with AI** asks the same local
+Claude Code for a category for each uncategorized merchant. It runs with no tools
+at all. Per merchant it sends the payee, up to three bank descriptors, a typical
+amount, how many charges there are, and the account type (for example "credit
+card"), plus your category list and hints. It never sends balances, account names
+or numbers, or memos.
+
+- **Accept** makes a merchant rule; **Not this** hides the suggestion.
+- **Daily** (on by default) asks about new merchants after the daily sync.
+- **Auto-accept ≥ 90%** (off by default) makes the rule directly for confident
+  suggestions. You can see and remove rules in the Rules manager.
+- Add a `hint` to a category in your category file to steer the suggestions.
+
 ## For developers
 
 ### Architecture

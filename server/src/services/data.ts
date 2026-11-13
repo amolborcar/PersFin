@@ -26,7 +26,7 @@ const DATA_TABLES = [
   'manual_assets', 'accounts', 'asset_class_overrides', 'cost_basis_overrides', 'imported_cost_basis',
   'plaid_items', 'provider_cache', 'transactions',
   'imported_txns', 'budget_targets', 'rules', 'txn_amount_overrides',
-  'recurring_overrides', 'report_cache',
+  'recurring_overrides', 'report_cache', 'ai_suggestions',
 ];
 
 // --- meta helpers (small settings persisted in the DB) ----------------------

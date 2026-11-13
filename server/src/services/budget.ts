@@ -1057,6 +1057,9 @@ export interface ReviewGroup {
   lastDate: string;     // most recent date (YYYY-MM-DD)
   suggested: string;    // the top (keyword) guess, '' if none — shown starred
   suggestions: string[]; // ranked one-click categories (display labels)
+  // A pending AI suggestion for this merchant (services/aiCategorize.ts), when
+  // its category is still active. It is also the starred, first suggestion.
+  ai?: { category: string; confidence: number; reason: string };
   note: string;         // a raw descriptor that adds detail beyond the payee, '' if none
   txns: ReviewTxn[];    // the underlying charges (most-recent first, capped)
 }
@@ -1100,6 +1103,14 @@ export async function getReviewQueue(): Promise<{ groups: ReviewGroup[]; topCate
     (byKey.get(key) ?? byKey.set(key, []).get(key)!).push(t);
   }
 
+  // Pending AI suggestions, keyed by merchant (read directly: aiCategorize
+  // imports this module, so the reverse import would be a cycle).
+  const aiByMerchant = new Map(
+    (getDb().prepare(`SELECT merchant, category, confidence, reason FROM ai_suggestions WHERE status = 'pending'`)
+      .all() as { merchant: string; category: string; confidence: number; reason: string }[])
+      .map(r => [r.merchant, r] as const),
+  );
+
   const groups: ReviewGroup[] = [];
   for (const txns of byKey.values()) {
     const total = txns.reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -1110,7 +1121,9 @@ export async function getReviewQueue(): Promise<{ groups: ReviewGroup[]; topCate
     for (const t of txns) mfreq.set(t.merchant, (mfreq.get(t.merchant) ?? 0) + 1);
     const merchant = [...mfreq.entries()].sort((a, b) => b[1] - a[1])[0][0];
     const rep = txns.find(t => t.merchant === merchant)!;
-    const sug = rep.suggested && rep.suggested !== 'Miscellaneous' && activeSet.has(rep.suggested) ? rep.suggested : '';
+    const aiRow = aiByMerchant.get(merchant);
+    const ai = aiRow && activeSet.has(aiRow.category) ? { category: aiRow.category, confidence: aiRow.confidence, reason: aiRow.reason } : undefined;
+    const sug = ai?.category ?? (rep.suggested && rep.suggested !== 'Miscellaneous' && activeSet.has(rep.suggested) ? rep.suggested : '');
     const ranked = [sug, ...topCategories].filter((c, i, a) => c && a.indexOf(c) === i).slice(0, 6);
     // A raw descriptor that says more than the cleaned payee (e.g. "AMAZON MKTPL*…").
     const note = txns.map(t => t.description).find(dsc => dsc && dsc.toLowerCase() !== rep.payee.toLowerCase()) ?? '';
@@ -1127,6 +1140,7 @@ export async function getReviewQueue(): Promise<{ groups: ReviewGroup[]; topCate
       count: txns.length, total, lastDate,
       suggested: sug ? lab.label(sug) : '',
       suggestions: ranked.map(c => lab.label(c)),
+      ...(ai ? { ai: { ...ai, category: lab.label(ai.category) } } : {}),
       note, txns: reviewTxns,
     });
   }

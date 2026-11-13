@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { getBudget, getSpendingProjection, getReviewQueue, getCashFlow, getCashFlowTransactions, getTransactionsList, getCategoryGroups, getGroupNames, getCategoryLabeler, applyCategoryRule, suggestRules, countRule, applySmartRules, setTarget, setSignFlip, countSignFlip, getActiveCategories, addCategory, renameCategory, removeCategory, setCategoryGroup, importTransactions, reconcileImported, getImported, clearImported, deleteImported, updateImportedCategory, acceptImported, setTxnAmount, clearTxnAmount, getCategoryState, restoreCategoryState, resetCategoriesToDefault, type CategoryState } from '../services/budget.js';
 import { getCategoryFileReport } from '../services/categoryFile.js';
+import { categorizeWithAi, getAiSettings, setAiSettings, rejectSuggestion } from '../services/aiCategorize.js';
+import { findClaudeBinary } from '../services/assistant.js';
 
 const router = Router();
 
@@ -130,6 +132,38 @@ router.get('/categories/groups', (_req: Request, res: Response) => res.json(getG
 // Where the personal category file is, and what its last load reported (an
 // error means the file was not applied; warnings say what a load changed).
 router.get('/categories/file', (_req: Request, res: Response) => res.json(getCategoryFileReport()));
+
+// --- AI categorization (services/aiCategorize.ts) --------------------------------
+// Ask the local Claude Code for categories for review-queue merchants that have
+// no suggestion yet. Runs until done; the run is killed if the client goes away.
+router.post('/ai-categorize', async (_req: Request, res: Response) => {
+  const ac = new AbortController();
+  res.on('close', () => { if (!res.writableFinished) ac.abort(); });
+  try {
+    res.json(await categorizeWithAi({ signal: ac.signal }));
+  } catch (err) {
+    console.error('[ai] categorize failed:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'AI categorization failed' });
+  }
+});
+// Dismiss a pending suggestion (it is not shown or asked for again).
+router.post('/ai-suggestions/reject', (req: Request, res: Response) => {
+  const merchant = typeof req.body?.merchant === 'string' ? req.body.merchant : '';
+  if (!merchant) return res.status(400).json({ error: 'merchant required' });
+  res.json({ ok: rejectSuggestion(merchant) });
+});
+// { daily, autoAccept } plus whether a Claude Code binary is available.
+router.get('/ai-settings', (_req: Request, res: Response) => {
+  res.json({ ...getAiSettings(), available: findClaudeBinary() != null });
+});
+router.put('/ai-settings', (req: Request, res: Response) => {
+  const b = req.body as { daily?: unknown; autoAccept?: unknown };
+  const next = setAiSettings({
+    ...(typeof b?.daily === 'boolean' ? { daily: b.daily } : {}),
+    ...(typeof b?.autoAccept === 'boolean' ? { autoAccept: b.autoAccept } : {}),
+  });
+  res.json({ ...next, available: findClaudeBinary() != null });
+});
 
 // Create a new category; the server auto-picks an emoji from the name. Returns
 // the created (display) name so the caller can immediately assign it.

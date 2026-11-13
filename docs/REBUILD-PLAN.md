@@ -17,7 +17,8 @@ of `kxl3785/KevFin`. Open PRs against `amolborcar/PersFin` only.
 | 3 macOS only | Done. Build passes; tests pass (server 349, client 143). The `.dmg` build was not run (it needs a macOS runner or the Mac mini). |
 | 3b launchd | Done in code; not yet tested on the Mac mini. Build passes; tests pass (server 363, client 143, desktop 6). Test steps: `DESKTOP.md` → "Keep running in the background". |
 | 4 Category file | Done. Build passes; tests pass (server 378, client 143, desktop 6). |
-| 5–9 | Not started |
+| 5 AI categorization | Done. Build passes; tests pass (server 393, client 143, desktop 6). Not yet run against the real Claude Code. |
+| 6–9 | Not started |
 
 Update this table at the end of each phase.
 
@@ -257,6 +258,26 @@ Implementation (done) — differences from the steps above:
 6. Optional auto-accept at confidence ≥ 0.9. Default off.
 7. Tests: parser and validator, precedence, batch selection (mock the spawn as
    in `assistantArgs.test.ts`).
+
+Implementation (done) — differences from the steps above:
+- Per merchant, not per transaction: the unit is a Quick review merchant group
+  (uncategorized expenses grouped by merchant), so one suggestion covers all its
+  charges and uses fewer tokens. Table `ai_suggestions` is keyed by merchant
+  (migration 10); status `pending`, `unsure`, `auto`, `rejected`.
+- Accepting a suggestion uses the wizard's normal assign, which makes a merchant
+  rule — so precedence is manual edit → rule → built-in guess → Miscellaneous,
+  with no separate AI layer.
+- Sent per merchant: display payee, up to 3 bank descriptors (≤ 80 chars), a
+  typical amount, the count and the account type; merchants get opaque ids
+  (`m1`…). Not sent: balances, account names, memos, merchant keys. Income
+  categories are not offered (the queue holds money spent).
+- `services/claudeRunner.ts`: shared no-tools runner (stdin prompt, timeout,
+  abort on client disconnect, private temp cwd), tested against a fake binary.
+- Batches of 50, up to 150 merchants per run, one batch at a time. A merchant
+  with a stored suggestion is not sent again. "Daily" (default on) runs it after
+  the daily sync; "Auto-accept ≥ 90%" (default off) makes the rule directly.
+- Routes: `POST /api/budget/ai-categorize`, `POST /api/budget/ai-suggestions/reject`,
+  `GET|PUT /api/budget/ai-settings`.
 
 ## Phase 6: Weekly report content
 
